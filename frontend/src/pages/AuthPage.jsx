@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import axios from 'axios';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
+import { useState } from "react";
+import axios from "axios";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -13,9 +13,9 @@ export default function AuthPage({ setUser }) {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    phone: ''
+    email: "",
+    password: "",
+    phone: "",
   });
   const navigate = useNavigate();
 
@@ -24,29 +24,31 @@ export default function AuthPage({ setUser }) {
     setLoading(true);
 
     try {
-      const endpoint = isLogin ? '/auth/login' : '/auth/register';
-      const payload = isLogin 
+      const endpoint = isLogin ? "/auth/login" : "/auth/register";
+      const payload = isLogin
         ? { email: formData.email, password: formData.password }
         : formData;
 
       const response = await axios.post(`${API}${endpoint}`, payload);
-      
-      localStorage.setItem('token', response.data.token);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+
+      localStorage.setItem("token", response.data.token);
+      localStorage.setItem("user", JSON.stringify(response.data.user));
       setUser(response.data.user);
-      
+
       // Request notification permission
-      if ('Notification' in window && Notification.permission === 'default') {
+      if ("Notification" in window && Notification.permission === "default") {
         await Notification.requestPermission();
       }
-      
-      toast.success(isLogin ? 'Welcome back!' : 'Account created successfully!');
-      
+
+      toast.success(
+        isLogin ? "Welcome back!" : "Account created successfully!"
+      );
+
       setTimeout(() => {
-        navigate(response.data.user.is_admin ? '/admin' : '/dashboard');
+        navigate(response.data.user.is_admin ? "/admin" : "/dashboard");
       }, 500);
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Authentication failed');
+      toast.error(error.response?.data?.detail || "Authentication failed");
     } finally {
       setLoading(false);
     }
@@ -64,9 +66,11 @@ export default function AuthPage({ setUser }) {
           <div className="bg-[#1a1d2e]/80 backdrop-blur-xl rounded-2xl p-8 shadow-lg shadow-cyan-500/20">
             <div className="text-center mb-8">
               <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent mb-2">
-                QuestHacker
+                Habit Tracker
               </h1>
-              <p className="text-gray-400">Level up your life, one habit at a time</p>
+              <p className="text-gray-400">
+                Level up your life, one habit at a time
+              </p>
             </div>
 
             <div className="flex gap-2 mb-6">
@@ -75,8 +79,8 @@ export default function AuthPage({ setUser }) {
                 onClick={() => setIsLogin(true)}
                 className={`flex-1 rounded-xl py-3 font-medium transition-all ${
                   isLogin
-                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/50'
-                    : 'bg-transparent border border-gray-700 text-gray-400 hover:bg-gray-800'
+                    ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/50"
+                    : "bg-transparent border border-gray-700 text-gray-400 hover:bg-gray-800"
                 }`}
               >
                 Login
@@ -86,8 +90,8 @@ export default function AuthPage({ setUser }) {
                 onClick={() => setIsLogin(false)}
                 className={`flex-1 rounded-xl py-3 font-medium transition-all ${
                   !isLogin
-                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/50'
-                    : 'bg-transparent border border-gray-700 text-gray-400 hover:bg-gray-800'
+                    ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/50"
+                    : "bg-transparent border border-gray-700 text-gray-400 hover:bg-gray-800"
                 }`}
               >
                 Register
@@ -96,13 +100,17 @@ export default function AuthPage({ setUser }) {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <Label htmlFor="email" className="text-gray-300 mb-2 block">Email</Label>
+                <Label htmlFor="email" className="text-gray-300 mb-2 block">
+                  Email
+                </Label>
                 <Input
                   id="email"
                   data-testid="email-input"
                   type="email"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
                   className="w-full bg-[#0a0e27] border-gray-700 text-white rounded-xl p-3 focus:border-cyan-500"
                   required
                   placeholder="your@email.com"
@@ -110,13 +118,17 @@ export default function AuthPage({ setUser }) {
               </div>
 
               <div>
-                <Label htmlFor="password" className="text-gray-300 mb-2 block">Password</Label>
+                <Label htmlFor="password" className="text-gray-300 mb-2 block">
+                  Password
+                </Label>
                 <Input
                   id="password"
                   data-testid="password-input"
                   type="password"
                   value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
                   className="w-full bg-[#0a0e27] border-gray-700 text-white rounded-xl p-3 focus:border-cyan-500"
                   required
                   placeholder="••••••••"
@@ -125,13 +137,17 @@ export default function AuthPage({ setUser }) {
 
               {!isLogin && (
                 <div>
-                  <Label htmlFor="phone" className="text-gray-300 mb-2 block">Phone (Optional)</Label>
+                  <Label htmlFor="phone" className="text-gray-300 mb-2 block">
+                    Phone (Optional)
+                  </Label>
                   <Input
                     id="phone"
                     data-testid="phone-input"
                     type="tel"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone: e.target.value })
+                    }
                     className="w-full bg-[#0a0e27] border-gray-700 text-white rounded-xl p-3 focus:border-cyan-500"
                     placeholder="+1234567890"
                   />
@@ -149,8 +165,10 @@ export default function AuthPage({ setUser }) {
                     <div className="spinner w-5 h-5"></div>
                     <span>Processing...</span>
                   </div>
+                ) : isLogin ? (
+                  "Sign In"
                 ) : (
-                  isLogin ? 'Sign In' : 'Create Account'
+                  "Create Account"
                 )}
               </Button>
             </form>

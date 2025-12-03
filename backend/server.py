@@ -1,6 +1,8 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
+from pywebpush import webpush, WebPushException
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
@@ -32,6 +34,56 @@ security = HTTPBearer()
 JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')
 JWT_ALGORITHM = 'HS256'
 
+# notifications
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+VAPID_PUBLIC_KEY = "BNYiFa9uM0q9Ius1mg0-7mFeQNiNdUYKKs6RJbvw5fEirhMhcKxtKiGHJyIRfm3FwobRqDtv8eioRuGSxkXoOsI"
+VAPID_PRIVATE_KEY = "RzxubIt1t7xImx9fJVZx4Mrprby0Xgnv9MYLPZNcjyk"
+
+subscriptions = []
+
+class Notification(BaseModel):
+    title: str = "Reminder!"
+    body: str = "Don't forget your habit today!"
+
+# -----------------------------
+@app.post("/subscribe")
+async def subscribe(subscription: dict):
+    subscriptions.append(subscription)
+    print("New subscription:", subscription.get("endpoint"))
+    return {"message": "Subscribed"}
+
+# -----------------------------
+@app.post("/send_notification")
+async def send_notification(notification: Notification):
+    title = notification.title
+    body = notification.body
+
+    if not subscriptions:
+        return {"message": "No subscribers to send notifications"}
+
+    for sub in subscriptions:
+        try:
+            webpush(
+                subscription_info=sub,
+                data=f"{title}|{body}",
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": "mailto:vj@example.com"}
+            )
+            print(f"Notification sent to {sub['endpoint']}")
+        except WebPushException as e:
+            print(f"Error sending notification to {sub['endpoint']}: {e}")
+
+    return {"message": "Notifications sent"}
+
+
 # Helper functions
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
@@ -59,7 +111,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         return user
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.JWTError:
+    except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 async def get_admin_user(current_user: dict = Depends(get_current_user)):

@@ -71,7 +71,7 @@ export default function Dashboard({ user, setUser }) {
       setCompletedToday(completedIds);
     } catch (error) {
       toast.error("Failed to load data");
-        console.error(error);
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -124,7 +124,7 @@ export default function Dashboard({ user, setUser }) {
       fetchData();
     } catch (error) {
       toast.error("Failed to create habit");
-        console.error(error);
+      console.error(error);
     }
   };
 
@@ -177,7 +177,7 @@ export default function Dashboard({ user, setUser }) {
       fetchData();
     } catch (error) {
       toast.error("Failed to delete habit");
-        console.error(error);
+      console.error(error);
     }
   };
 
@@ -221,7 +221,7 @@ export default function Dashboard({ user, setUser }) {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-              QuestHacker
+              Habit Tracker
             </h1>
             <p className="text-gray-400 mt-1">{user.email}</p>
           </div>
