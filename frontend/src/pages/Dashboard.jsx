@@ -52,11 +52,17 @@ export default function Dashboard({ user, setUser }) {
   });
   const navigate = useNavigate();
 
-  const getAuthHeader = () => ({
-    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-  });
+  const getAuthHeader = () => {
+    const token = localStorage.getItem("token");
+    return {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    };
+  };
 
   const fetchData = async () => {
+    console.log("Token being sent:", localStorage.getItem("token"));
     try {
       const [statsRes, habitsRes, completionsRes] = await Promise.all([
         axios.get(`${API}/stats`, getAuthHeader()),
@@ -65,6 +71,11 @@ export default function Dashboard({ user, setUser }) {
       ]);
       setStats(statsRes.data);
       setHabits(habitsRes.data);
+
+      if (!token || tokenExpired(token)) {
+        // Redirect user to login page
+        window.location.href = "/login";
+      }
 
       // Track which habits were completed today
       const completedIds = new Set(completionsRes.data.map((c) => c.habit_id));
