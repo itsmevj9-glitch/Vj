@@ -91,11 +91,14 @@ def hash_password(password: str) -> str:
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
-def create_access_token(data: dict, expires_delta: timedelta = timedelta(days=7)):
-    to_encode = data.copy()
+def create_access_token(user_id: str, expires_delta: timedelta = timedelta(days=7)):
     expire = datetime.now(timezone.utc) + expires_delta
-    to_encode.update({"exp": expire})
+    to_encode = {
+        "sub": user_id,
+        "exp": expire,
+    }
     return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
