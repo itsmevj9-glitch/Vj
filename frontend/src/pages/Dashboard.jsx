@@ -52,17 +52,11 @@ export default function Dashboard({ user, setUser }) {
   });
   const navigate = useNavigate();
 
-  const getAuthHeader = () => {
-    const token = localStorage.getItem("token");
-    return {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    };
-  };
+  const getAuthHeader = () => ({
+    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+  });
 
   const fetchData = async () => {
-    console.log("Token being sent:", localStorage.getItem("token"));
     try {
       const [statsRes, habitsRes, completionsRes] = await Promise.all([
         axios.get(`${API}/stats`, getAuthHeader()),
@@ -71,11 +65,6 @@ export default function Dashboard({ user, setUser }) {
       ]);
       setStats(statsRes.data);
       setHabits(habitsRes.data);
-
-      if (!token || tokenExpired(token)) {
-        // Redirect user to login page
-        window.location.href = "/login";
-      }
 
       // Track which habits were completed today
       const completedIds = new Set(completionsRes.data.map((c) => c.habit_id));
@@ -232,7 +221,7 @@ export default function Dashboard({ user, setUser }) {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-              Habit Tracker
+              QuestHacker
             </h1>
             <p className="text-gray-400 mt-1">{user.email}</p>
           </div>
