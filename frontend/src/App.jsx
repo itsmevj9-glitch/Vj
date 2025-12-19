@@ -4,6 +4,8 @@ import AuthPage from "./pages/AuthPage";
 import Dashboard from "./pages/Dashboard";
 import AdminPanel from "./pages/AdminPanel";
 import { Toaster } from "./components/ui/sonner";
+import Leaderboard from "./pages/Leaderboard";
+
 import "./App.css";
 
 function App() {
@@ -69,6 +71,7 @@ function App() {
               />
             }
           />
+          <Route path="/leaderboard" element={<Leaderboard />} />
         </Routes>
       </BrowserRouter>
       <Toaster position="top-right" />

@@ -265,9 +265,15 @@ async def login(credentials: UserLogin):
 
 @api_router.get("/auth/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
+    # Fallback logic: if username isn't set, use email prefix
+    username = current_user.get("username")
+    if not username:
+        username = current_user["email"].split('@')[0]
+
     return {
         "id": current_user["id"],
         "email": current_user["email"],
+        "username": username, # Add this line
         "is_admin": current_user.get("is_admin", False),
         "xp": current_user.get("xp", 0),
         "level": current_user.get("level", 1),
@@ -275,6 +281,37 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         "longest_streak": current_user.get("longest_streak", 0),
         "badges": current_user.get("badges", [])
     }
+    
+# Update your User doc in /auth/register to include:
+# "username": user_data.email.split('@')[0], 
+
+@api_router.patch("/auth/username")
+async def update_username(data: dict, current_user: dict = Depends(get_current_user)):
+    new_username = data.get("username")
+    if not new_username:
+        raise HTTPException(status_code=400, detail="Username required")
+    
+    # Check uniqueness
+    existing = await db.users.find_one({"username": new_username})
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already taken by another hacker")
+    
+    await db.users.update_one({"id": current_user["id"]}, {"$set": {"username": new_username}})
+    return {"message": "Identity Updated"}
+
+@api_router.get("/leaderboard")
+async def get_leaderboard():
+    # Only non-admins, sorted by XP descending
+    users = await db.users.find(
+        {"is_admin": False}, 
+        {"_id": 0, "username": 1, "xp": 1, "level": 1, "email": 1}
+    ).sort("xp", -1).limit(10).to_list(10)
+    
+    # Fallback for users who haven't set a username yet
+    for u in users:
+        if not u.get("username"):
+            u["username"] = u["email"].split('@')[0]
+    return users
 
 # Habit Routes
 @api_router.get("/habits", response_model=List[Habit])
@@ -324,6 +361,27 @@ async def update_habit(habit_id: str, habit_data: HabitCreate, current_user: dic
         raise HTTPException(status_code=404, detail="Habit not found")
     result.pop("_id", None)
     return Habit(**result)
+
+@api_router.patch("/habits/{habit_id}", response_model=Habit)
+async def patch_habit(
+    habit_id: str, 
+    habit_data: dict,  # Use a dict to allow partial data
+    current_user: dict = Depends(get_current_user)
+):
+    # Find the habit and ensure it belongs to the user
+    habit = await db.habits.find_one({"id": habit_id, "user_id": current_user["id"]})
+    if not habit:
+        raise HTTPException(status_code=404, detail="Habit not found")
+    
+    # Update only the fields provided in the request
+    await db.habits.update_one(
+        {"id": habit_id},
+        {"$set": habit_data}
+    )
+    
+    # Return the updated document
+    updated_habit = await db.habits.find_one({"id": habit_id}, {"_id": 0})
+    return Habit(**updated_habit)
 
 @api_router.delete("/habits/{habit_id}")
 async def delete_habit(habit_id: str, current_user: dict = Depends(get_current_user)):

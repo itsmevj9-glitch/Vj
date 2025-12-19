@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -10,6 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../components/ui/dialog";
+import NotificationManager from "../components/ui/NotificationManager";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +34,14 @@ import {
   Trash2,
   LogOut,
   Bell,
+  Crown,
+  Edit3,
+  Zap,
+  Gift,
+  Lock,
+  UserCircle,
+  Info,
+  Terminal,
 } from "lucide-react";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
@@ -43,7 +52,9 @@ export default function Dashboard({ user, setUser }) {
   const [habits, setHabits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [intelOpen, setIntelOpen] = useState(false);
   const [completedToday, setCompletedToday] = useState(new Set());
+  const [newUsername, setNewUsername] = useState("");
   const [habitForm, setHabitForm] = useState({
     name: "",
     description: "",
@@ -51,6 +62,47 @@ export default function Dashboard({ user, setUser }) {
     notification_time: "",
   });
   const navigate = useNavigate();
+
+  const dailyQuote = useMemo(() => {
+    const quotes = [
+      "Small wins every day lead to big results every year.",
+      "The secret of your future is hidden in your daily routine.",
+      "Don't wait for motivation. Design a system that works without it.",
+      "Your habits define your future. Make them count today.",
+      "Consistency is the bridge between goals and accomplishment.",
+      "Discipline is choosing between what you want now and what you want most.",
+      "You don't have to be great to start, but you have to start to be great.",
+      "Success is the sum of small efforts, repeated day in and day out.",
+      "The best way to predict your future is to create it.",
+      "Everything you’ve ever wanted is on the other side of consistency.",
+    ];
+    const now = new Date();
+    const dateString = `${now.getFullYear()}${now.getMonth()}${now.getDate()}`;
+    return quotes[parseInt(dateString) % quotes.length];
+  }, []);
+
+  const progressionGuide = {
+    ranks: [
+      {
+        lvl: 0,
+        title: "Novice Adventurer",
+        desc: "Just starting the journey.",
+      },
+      { lvl: 5, title: "Elite Scout", desc: "Proven consistency in missions." },
+      {
+        lvl: 15,
+        title: "Legendary Master",
+        desc: "Total mastery of daily discipline.",
+      },
+    ],
+    tags: [
+      { name: "Beginner", req: "Level 1", color: "text-slate-400" },
+      { name: "Novice", req: "Level 5", color: "text-green-400" },
+      { name: "Intermediate", req: "Level 10", color: "text-cyan-400" },
+      { name: "Expert", req: "Level 15", color: "text-purple-400" },
+      { name: "Master", req: "Level 20+", color: "text-yellow-400" },
+    ],
+  };
 
   const getAuthHeader = () => ({
     headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -65,13 +117,9 @@ export default function Dashboard({ user, setUser }) {
       ]);
       setStats(statsRes.data);
       setHabits(habitsRes.data);
-
-      // Track which habits were completed today
-      const completedIds = new Set(completionsRes.data.map((c) => c.habit_id));
-      setCompletedToday(completedIds);
+      setCompletedToday(new Set(completionsRes.data.map((c) => c.habit_id)));
     } catch (error) {
       toast.error("Failed to load data");
-      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -79,52 +127,38 @@ export default function Dashboard({ user, setUser }) {
 
   useEffect(() => {
     fetchData();
+  }, []);
 
-    // Setup notification scheduler
-    const checkNotifications = () => {
-      const now = new Date();
-      const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(
-        now.getMinutes()
-      ).padStart(2, "0")}`;
+  const isIdentityClaimed =
+    user?.username && user.username !== user.email.split("@")[0];
 
-      habits.forEach((habit) => {
-        if (
-          habit.notification_time === currentTime &&
-          !completedToday.has(habit.id)
-        ) {
-          if (Notification.permission === "granted") {
-            new Notification("⏰ Habit Reminder", {
-              body: `Time to complete: ${habit.name}`,
-              icon: "/favicon.ico",
-              tag: habit.id,
-            });
-          }
-        }
-      });
-    };
-
-    // Check every minute
-    const interval = setInterval(checkNotifications, 60000);
-
-    return () => clearInterval(interval);
-  }, [habits, completedToday]);
-
-  const handleCreateHabit = async (e) => {
-    e.preventDefault();
+  async function handleUpdateUsername() {
     try {
-      await axios.post(`${API}/habits`, habitForm, getAuthHeader());
-      toast.success("Habit created successfully!");
-      setHabitForm({
-        name: "",
-        description: "",
-        frequency: "daily",
-        notification_time: "",
-      });
-      setCreateDialogOpen(false);
+      await axios.patch(
+        `${API}/auth/username`,
+        { username: newUsername },
+        getAuthHeader()
+      );
+      toast.success("IDENTITY VERIFIED");
+      const updatedUser = { ...user, username: newUsername };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      setUser(updatedUser);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Update Failed");
+    }
+  }
+
+  const handleUpdateDescription = async (habitId, newDesc) => {
+    try {
+      await axios.patch(
+        `${API}/habits/${habitId}`,
+        { description: newDesc },
+        getAuthHeader()
+      );
+      toast.success("MISSION DATA SYNCED");
       fetchData();
     } catch (error) {
-      toast.error("Failed to create habit");
-      console.error(error);
+      toast.error("DATA LINK INTERRUPTED");
     }
   };
 
@@ -135,29 +169,11 @@ export default function Dashboard({ user, setUser }) {
         {},
         getAuthHeader()
       );
-      toast.success(`+${response.data.xp_earned} XP! 🎉`);
-
-      // Mark as completed today
+      toast.success(`+${response.data.xp_earned} XP SECURED! 🎉`);
       setCompletedToday((prev) => new Set([...prev, habitId]));
-
-      // Show level up notification
-      if (response.data.new_level > stats.level) {
-        toast.success(
-          `🎊 Level Up! You're now level ${response.data.new_level}!`
-        );
-
-        // Browser notification
-        if (Notification.permission === "granted") {
-          new Notification("🎊 Level Up!", {
-            body: `You've reached level ${response.data.new_level}!`,
-            icon: "/favicon.ico",
-          });
-        }
-      }
-
+      if (response.data.new_level > stats.level)
+        toast.success(`LEVEL UP: Rank ${response.data.new_level}`);
       fetchData();
-
-      // Update user in localStorage
       const updatedUser = {
         ...user,
         xp: response.data.new_xp,
@@ -166,386 +182,588 @@ export default function Dashboard({ user, setUser }) {
       localStorage.setItem("user", JSON.stringify(updatedUser));
       setUser(updatedUser);
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Failed to complete habit");
+      toast.error("Action Denied");
     }
   };
 
   const handleDeleteHabit = async (habitId) => {
     try {
       await axios.delete(`${API}/habits/${habitId}`, getAuthHeader());
-      toast.success("Habit deleted");
+      toast.success("Habit Purged");
       fetchData();
     } catch (error) {
-      toast.error("Failed to delete habit");
-      console.error(error);
+      toast.error("Deletion Failed");
+    }
+  };
+
+  const handleCreateHabit = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(`${API}/habits`, habitForm, getAuthHeader());
+      toast.success("New Mission Logged!");
+      setHabitForm({
+        name: "",
+        description: "",
+        frequency: "daily",
+        notification_time: "",
+      });
+      setCreateDialogOpen(false);
+      fetchData();
+    } catch (error) {
+      toast.error("System Override Failed");
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    localStorage.clear();
     setUser(null);
     navigate("/auth");
   };
 
-  const requestNotificationPermission = async () => {
-    if ("Notification" in window) {
-      const permission = await Notification.requestPermission();
-      if (permission === "granted") {
-        toast.success("Notifications enabled!");
-      } else {
-        toast.error("Notification permission denied");
-      }
-    }
-  };
-
-  if (loading) {
+  if (loading || !stats)
     return (
-      <div className="min-h-screen bg-gradient-to-b from-[#0a0e27] via-[#1a1d2e] to-[#0a0e27] flex items-center justify-center">
+      <div className="min-h-screen bg-[#0a0e27] flex items-center justify-center">
+        <NotificationManager habits={habits} />
         <div className="spinner"></div>
       </div>
     );
-  }
 
-  const xpForNextLevel = stats.level * 100;
   const xpProgress = ((stats.xp % 100) / 100) * 100;
+  const isOnFire = stats.current_streak >= 3;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#0a0e27] via-[#1a1d2e] to-[#0a0e27] relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-b from-[#0a0e27] via-[#1a1d2e] to-[#0a0e27] relative overflow-hidden flex flex-col font-sans">
+      <div
+        className="fixed inset-0 z-0 pointer-events-none opacity-[0.03]"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+        }}
+      ></div>
+      <div className="fixed inset-0 z-0 pointer-events-none [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black_100%)]"></div>
       <div className="bg-shape bg-shape-1"></div>
       <div className="bg-shape bg-shape-2"></div>
       <div className="bg-shape bg-shape-3"></div>
-
-      <div className="glow-container relative z-10 py-8 px-4">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+      <div className="glow-container relative z-10 py-8 px-4 max-w-7xl mx-auto flex-grow w-full">
+        <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent uppercase tracking-tight">
               QuestHacker
             </h1>
-            <p className="text-gray-400 mt-1">{user.email}</p>
+            <p className="text-gray-400 mt-1 font-mono text-xs tracking-widest uppercase opacity-70">
+              {user?.username || user?.email.split("@")[0]} // Operative
+            </p>
           </div>
           <div className="flex gap-2">
-            {Notification.permission !== "granted" && (
-              <Button
-                data-testid="enable-notifications-btn"
-                onClick={requestNotificationPermission}
-                className="bg-yellow-600 hover:bg-yellow-700 text-white rounded-xl px-4 py-2"
-              >
-                <Bell className="w-5 h-5 mr-2" />
-                Enable Notifications
-              </Button>
+            {!isIdentityClaimed && (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button className="p-2 bg-cyan-500/20 text-cyan-400 rounded-xl hover:bg-cyan-500/40 transition border border-cyan-500/30 relative shadow-[0_0_10px_rgba(6,182,212,0.3)]">
+                    <UserCircle className="w-6 h-6" />
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#0a0e27] animate-pulse"></span>
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="bg-[#1a1d2e] border-cyan-500/30 text-white">
+                  <DialogHeader>
+                    <DialogTitle>Claim Identity</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <Input
+                      placeholder="Handle..."
+                      className="bg-[#0a0e27] border-gray-700 text-white"
+                      value={newUsername}
+                      onChange={(e) => setNewUsername(e.target.value)}
+                    />
+                    <Button
+                      onClick={handleUpdateUsername}
+                      className="w-full bg-cyan-600"
+                    >
+                      Verify Identity
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             )}
-            <Button
-              data-testid="logout-btn"
-              onClick={handleLogout}
-              className="bg-red-600 hover:bg-red-700 text-white rounded-xl px-4 py-2"
+            <button
+              onClick={() => navigate("/leaderboard")}
+              className="group relative flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-600 hover:scale-105 transition shadow-lg shadow-purple-500/40"
             >
-              <LogOut className="w-5 h-5 mr-2" />
-              Logout
+              <Crown className="w-5 h-5 text-white" />
+              <span className="text-white font-medium hidden sm:block">
+                Leaderboard
+              </span>
+            </button>
+            <Button
+              onClick={handleLogout}
+              className="bg-red-600/20 text-red-500 border border-red-500/40 hover:bg-red-600 hover:text-white rounded-xl px-4 py-2 transition-all"
+            >
+              <LogOut className="w-5 h-5" />
             </Button>
           </div>
         </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div
-            data-testid="level-card"
-            className="bg-[#1a1d2e]/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-cyan-500/20 card-hover"
-          >
+        <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-500 to-transparent shadow-[0_0_15px_#06b6d4] opacity-40 mb-10"></div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+          <div className="bg-gradient-to-br from-cyan-900/40 to-blue-900/40 border-2 border-cyan-500/50 rounded-2xl p-6 flex items-center gap-4 shadow-lg shadow-cyan-500/10">
+            <div className="p-3 bg-cyan-500 rounded-full shadow-[0_0_15px_#06b6d4]">
+              <Crown className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase font-bold text-cyan-400 tracking-widest">
+                Your Rank
+              </p>
+              <h3 className="text-xl font-black italic text-white uppercase">
+                {stats.level < 5
+                  ? "Novice Adventurer"
+                  : stats.level < 15
+                  ? "Elite Scout"
+                  : "Legendary Master"}
+              </h3>
+            </div>
+          </div>
+          <div className="bg-gradient-to-br from-purple-900/40 to-pink-900/40 border-2 border-purple-500/50 rounded-2xl p-6 flex items-center gap-4 shadow-lg shadow-purple-500/10">
+            <div className="p-3 bg-purple-500 rounded-full shadow-[0_0_15px_#a855f7]">
+              <Trophy className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <p className="text-[10px] uppercase font-bold text-purple-400 tracking-widest">
+                Next Milestone
+              </p>
+              <div className="flex justify-between items-end mb-1">
+                <span className="text-xs font-bold text-white uppercase">
+                  Rank {stats.level + 1}
+                </span>
+                <span className="text-[10px] text-purple-300">
+                  {100 - (stats.xp % 100)} XP to go
+                </span>
+              </div>
+              <div className="h-1.5 bg-black/40 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-purple-500 shadow-[0_0_10px_#a855f7]"
+                  style={{ width: `${stats.xp % 100}%` }}
+                ></div>
+              </div>
+            </div>
+          </div>
+          <div className="bg-[#1a1d2e]/80 border-2 border-white/10 rounded-2xl p-6 flex flex-col justify-center">
+            <p className="text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1 flex items-center gap-2">
+              <Zap className="w-3 h-3 text-yellow-500" /> Daily Insight
+            </p>
+            <p className="text-xs italic text-gray-200 leading-relaxed font-serif">
+              "{dailyQuote}"
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+          <div className="bg-[#1a1d2e]/90 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-cyan-500/20 card-hover border border-gray-800 transition-all">
             <div className="flex items-center gap-3 mb-3">
               <div className="p-3 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl">
-                <Trophy className="w-6 h-6" />
+                <Trophy className="w-6 h-6 text-white" />
               </div>
               <div>
                 <p className="text-gray-400 text-sm">Level</p>
                 <p className="text-3xl font-bold text-white">{stats.level}</p>
               </div>
             </div>
-            <div className="mt-4">
-              <div className="flex justify-between text-xs text-gray-400 mb-2">
-                <span>{stats.xp % 100} XP</span>
-                <span>{xpForNextLevel} XP</span>
-              </div>
-              <div className="h-2 bg-[#0a0e27] rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 progress-fill"
-                  style={{
-                    "--progress-width": `${xpProgress}%`,
-                    width: `${xpProgress}%`,
-                  }}
-                ></div>
-              </div>
+            <div className="mt-4 h-2 bg-[#0a0e27] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-cyan-500 to-blue-600"
+                style={{ width: `${xpProgress}%` }}
+              ></div>
             </div>
           </div>
-
           <div
-            data-testid="streak-card"
-            className="bg-[#1a1d2e]/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-orange-500/20 card-hover"
+            className={`bg-[#1a1d2e]/90 backdrop-blur-xl rounded-2xl p-6 shadow-lg border border-gray-800 transition-all duration-500 ${
+              isOnFire
+                ? "shadow-orange-600/50 border-orange-500 scale-105"
+                : "shadow-orange-500/20"
+            }`}
           >
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl">
-                <Flame className="w-6 h-6" />
+              <div
+                className={`p-3 rounded-xl transition-all duration-500 ${
+                  isOnFire
+                    ? "bg-gradient-to-br from-orange-400 to-red-600 animate-pulse shadow-[0_0_15px_#f97316]"
+                    : "bg-gradient-to-br from-orange-500 to-red-600"
+                }`}
+              >
+                <Flame
+                  className={`w-6 h-6 text-white ${
+                    isOnFire ? "fill-white" : ""
+                  }`}
+                />
               </div>
               <div>
-                <p className="text-gray-400 text-sm">Current Streak</p>
-                <p className="text-3xl font-bold text-white">
-                  {stats.current_streak}
+                <p className="text-gray-400 text-sm">
+                  {isOnFire ? "On Fire!" : "Streak"}
                 </p>
-                <p className="text-xs text-gray-500">
-                  Best: {stats.longest_streak} days
+                <p
+                  className={`text-3xl font-bold ${
+                    isOnFire ? "text-orange-400 italic" : "text-white"
+                  }`}
+                >
+                  {stats.current_streak}d
                 </p>
               </div>
             </div>
           </div>
-
-          <div
-            data-testid="xp-card"
-            className="bg-[#1a1d2e]/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-purple-500/20 card-hover"
-          >
+          <div className="bg-[#1a1d2e]/90 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-purple-500/20 card-hover border border-gray-800 transition-all">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl">
-                <Award className="w-6 h-6" />
+                <Award className="w-6 h-6 text-white" />
               </div>
               <div>
                 <p className="text-gray-400 text-sm">Total XP</p>
                 <p className="text-3xl font-bold text-white">{stats.xp}</p>
-                <p className="text-xs text-gray-500">
-                  {stats.badges.length} badges
-                </p>
               </div>
             </div>
           </div>
-
-          <div
-            data-testid="habits-card"
-            className="bg-[#1a1d2e]/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-green-500/20 card-hover"
-          >
+          <div className="bg-[#1a1d2e]/90 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-green-500/20 card-hover border border-gray-800 transition-all">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl">
-                <Target className="w-6 h-6" />
+                <Target className="w-6 h-6 text-white" />
               </div>
               <div>
-                <p className="text-gray-400 text-sm">Today's Progress</p>
+                <p className="text-gray-400 text-sm">Today</p>
                 <p className="text-3xl font-bold text-white">
                   {stats.completed_today}/{stats.total_habits}
                 </p>
-                <p className="text-xs text-gray-500">habits completed</p>
               </div>
             </div>
           </div>
         </div>
-
-        {/* Badges */}
-        <div
-          data-testid="badges-section"
-          className="bg-[#1a1d2e]/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-cyan-500/20 mb-8"
-        >
-          <h2 className="text-2xl font-bold text-white mb-4">Your Badges</h2>
-          <div className="flex flex-wrap gap-3">
-            {stats.badges.map((badge) => (
-              <div
-                key={badge}
-                data-testid={`badge-${badge.toLowerCase()}`}
-                className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full text-sm font-medium shadow-lg shadow-cyan-500/30"
-              >
-                {badge}
-              </div>
-            ))}
-          </div>
+        <div className="flex items-center gap-4 mb-10">
+          <div className="flex-1 h-[1px] bg-gradient-to-r from-transparent via-cyan-500 to-transparent opacity-20"></div>
+          <Zap className="w-5 h-5 text-cyan-500 animate-pulse" />
+          <div className="flex-1 h-[1px] bg-gradient-to-l from-transparent via-cyan-500 to-transparent opacity-20"></div>
         </div>
-
-        {/* Habits */}
-        <div className="bg-[#1a1d2e]/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-cyan-500/20">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-white">Your Habits</h2>
+        <div className="bg-[#1a1d2e]/80 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-gray-800 mb-20">
+          <div className="flex justify-between items-center mb-10">
+            <h2 className="text-2xl font-bold text-white uppercase italic tracking-tighter">
+              Active Quests
+            </h2>
             <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
               <DialogTrigger asChild>
-                <Button
-                  data-testid="create-habit-btn"
-                  className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white rounded-xl px-4 py-2 shadow-lg shadow-cyan-500/50"
-                >
-                  <Plus className="w-5 h-5 mr-2" />
-                  Create Habit
+                <Button className="bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl px-6 py-3 shadow-lg shadow-cyan-500/50 hover:scale-105 transition uppercase font-bold text-xs tracking-widest">
+                  <Plus className="w-5 h-5 mr-2" /> New Quest
                 </Button>
               </DialogTrigger>
               <DialogContent className="bg-[#1a1d2e] border-gray-700 text-white">
                 <DialogHeader>
-                  <DialogTitle>Create New Habit</DialogTitle>
+                  <DialogTitle>Quest Configuration</DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleCreateHabit} className="space-y-4 mt-4">
-                  <div>
-                    <Label htmlFor="name" className="text-gray-300">
-                      Habit Name
-                    </Label>
-                    <Input
-                      id="name"
-                      data-testid="habit-name-input"
-                      value={habitForm.name}
-                      onChange={(e) =>
-                        setHabitForm({ ...habitForm, name: e.target.value })
-                      }
-                      className="bg-[#0a0e27] border-gray-700 text-white mt-2"
-                      required
-                      placeholder="e.g., Morning Exercise"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="description" className="text-gray-300">
-                      Description
-                    </Label>
-                    <Input
-                      id="description"
-                      data-testid="habit-description-input"
-                      value={habitForm.description}
-                      onChange={(e) =>
-                        setHabitForm({
-                          ...habitForm,
-                          description: e.target.value,
-                        })
-                      }
-                      className="bg-[#0a0e27] border-gray-700 text-white mt-2"
-                      placeholder="Optional description"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="frequency" className="text-gray-300">
-                      Frequency
-                    </Label>
-                    <select
-                      id="frequency"
-                      data-testid="habit-frequency-select"
-                      value={habitForm.frequency}
-                      onChange={(e) =>
-                        setHabitForm({
-                          ...habitForm,
-                          frequency: e.target.value,
-                        })
-                      }
-                      className="w-full bg-[#0a0e27] border border-gray-700 text-white rounded-xl p-3 mt-2"
-                    >
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                    </select>
-                  </div>
-                  <div>
-                    <Label
-                      htmlFor="notification_time"
-                      className="text-gray-300"
-                    >
-                      Notification Time
-                    </Label>
-                    <Input
-                      id="notification_time"
-                      data-testid="habit-notification-time-input"
-                      type="time"
-                      value={habitForm.notification_time}
-                      onChange={(e) =>
-                        setHabitForm({
-                          ...habitForm,
-                          notification_time: e.target.value,
-                        })
-                      }
-                      className="bg-[#0a0e27] border-gray-700 text-white mt-2"
-                    />
-                  </div>
-                  <Button
-                    data-testid="submit-habit-btn"
-                    type="submit"
-                    className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white rounded-xl py-3"
+                <form onSubmit={handleCreateHabit} className="space-y-4 pt-4">
+                  <Input
+                    placeholder="Habit Name"
+                    className="bg-[#0a0e27] border-gray-700 text-white"
+                    value={habitForm.name}
+                    onChange={(e) =>
+                      setHabitForm({ ...habitForm, name: e.target.value })
+                    }
+                  />
+                  <Input
+                    placeholder="Note"
+                    className="bg-[#0a0e27] border-gray-700 text-white"
+                    value={habitForm.description}
+                    onChange={(e) =>
+                      setHabitForm({
+                        ...habitForm,
+                        description: e.target.value,
+                      })
+                    }
+                  />
+                  <select
+                    className="w-full bg-[#0a0e27] border border-gray-800 rounded-md p-2 text-white"
+                    value={habitForm.frequency}
+                    onChange={(e) =>
+                      setHabitForm({ ...habitForm, frequency: e.target.value })
+                    }
                   >
-                    Create Habit
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                  </select>
+                  <Input
+                    type="time"
+                    className="bg-[#0a0e27] border-gray-700 text-white"
+                    value={habitForm.notification_time}
+                    onChange={(e) =>
+                      setHabitForm({
+                        ...habitForm,
+                        notification_time: e.target.value,
+                      })
+                    }
+                  />
+                  <Button type="submit" className="w-full bg-cyan-600">
+                    Start Mission
                   </Button>
                 </form>
               </DialogContent>
             </Dialog>
           </div>
-
-          {habits.length === 0 ? (
-            <div data-testid="no-habits-message" className="text-center py-12">
-              <p className="text-gray-400 text-lg">
-                No habits yet. Create your first one!
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {habits.map((habit) => (
-                <div
-                  key={habit.id}
-                  data-testid={`habit-card-${habit.id}`}
-                  className="bg-[#0a0e27]/50 backdrop-blur-xl rounded-xl p-4 flex items-center justify-between hover:bg-[#0a0e27]/70 transition-all"
-                >
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-white">
-                      {habit.name}
-                    </h3>
-                    {habit.description && (
-                      <p className="text-gray-400 text-sm mt-1">
-                        {habit.description}
-                      </p>
-                    )}
-                    <div className="flex gap-3 mt-2">
-                      <span className="text-xs px-2 py-1 bg-cyan-500/20 text-cyan-400 rounded-full">
-                        {habit.frequency}
-                      </span>
-                      {habit.notification_time && (
-                        <span className="text-xs px-2 py-1 bg-blue-500/20 text-blue-400 rounded-full">
-                          🔔 {habit.notification_time}
-                        </span>
-                      )}
+          <div className="space-y-6">
+            {habits.map((habit) => (
+              <div
+                key={habit.id}
+                className="p-5 bg-[#0a0e27]/60 backdrop-blur-md rounded-2xl flex justify-between items-center border border-gray-800 hover:border-cyan-500/40 transition group"
+              >
+                <div className="flex-1">
+                  <h3 className="text-lg font-bold text-white group-hover:text-cyan-400 transition uppercase italic">
+                    {habit.name}
+                  </h3>
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type="text"
+                      defaultValue={habit.description}
+                      className="bg-transparent text-sm text-gray-500 font-mono italic outline-none border-b border-transparent focus:border-cyan-500/30 w-full max-w-xs"
+                      onBlur={(e) =>
+                        e.target.value !== habit.description &&
+                        handleUpdateDescription(habit.id, e.target.value)
+                      }
+                      onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
+                    />
+                    <Edit3 className="w-3 h-3 text-gray-700 opacity-0 group-hover:opacity-100" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => handleCompleteHabit(habit.id)}
+                    disabled={completedToday.has(habit.id)}
+                    className={
+                      completedToday.has(habit.id)
+                        ? "bg-gray-700 opacity-50"
+                        : "bg-gradient-to-r from-green-500 to-emerald-600 shadow-lg"
+                    }
+                  >
+                    <Check className="w-5 h-5" />
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button className="bg-red-600/10 text-red-500 border border-red-500/20">
+                        <Trash2 className="w-5 h-5" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="bg-[#1a1d2e] border-gray-700 text-white">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Cancel Quest?</AlertDialogTitle>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel className="bg-gray-700 text-white">
+                          Go Back
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => handleDeleteHabit(habit.id)}
+                          className="bg-red-600"
+                        >
+                          Remove
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-24 pt-16 border-t border-white/5">
+          <div className="bg-[#1a1d2e]/90 backdrop-blur-xl rounded-3xl p-8 border-[4px] border-cyan-500/40 relative overflow-hidden group shadow-2xl">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-xl font-bold text-white flex items-center gap-3 uppercase tracking-tight">
+                <Award className="text-cyan-400 w-6 h-6" /> Achievement Tags
+              </h2>
+              <Dialog open={intelOpen} onOpenChange={setIntelOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="h-8 w-8 p-0 rounded-full hover:bg-cyan-500/20 text-cyan-400"
+                  >
+                    <Info className="w-5 h-5" />
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-[#0a0e27] border-cyan-500/30 text-white max-w-2xl max-h-[80vh] overflow-y-auto shadow-[0_0_40px_rgba(6,182,212,0.3)]">
+                  <DialogHeader>
+                    <DialogTitle className="text-2xl font-black italic uppercase tracking-tighter text-cyan-400 flex items-center gap-2">
+                      <Terminal className="w-6 h-6" /> Progression Intel
+                    </DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-8 py-6 font-sans text-white">
+                    <div>
+                      <h4 className="text-xs font-mono uppercase text-gray-500 tracking-[0.3em] mb-4 flex items-center gap-2">
+                        <Crown className="w-4 h-4 text-yellow-500" /> Ranks
+                      </h4>
+                      <div className="space-y-3">
+                        {progressionGuide.ranks.map((r, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/10"
+                          >
+                            <div>
+                              <p className="font-bold text-white uppercase italic">
+                                {r.title}
+                              </p>
+                              <p className="text-xs text-gray-500">{r.desc}</p>
+                            </div>
+                            <span className="text-cyan-500 font-black">
+                              LVL {r.lvl}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-mono uppercase text-gray-500 tracking-[0.3em] mb-4 flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-cyan-400" /> Tags
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        {progressionGuide.tags.map((t, i) => (
+                          <div
+                            key={i}
+                            className="p-3 bg-white/5 rounded-xl border border-white/5 flex justify-between items-center"
+                          >
+                            <span
+                              className={`text-xs font-black uppercase ${t.color}`}
+                            >
+                              {t.name}
+                            </span>
+                            <span className="text-[10px] text-gray-500">
+                              {t.req}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      data-testid={`complete-habit-btn-${habit.id}`}
-                      onClick={() => handleCompleteHabit(habit.id)}
-                      disabled={completedToday.has(habit.id)}
-                      className={`${
-                        completedToday.has(habit.id)
-                          ? "bg-gray-600 cursor-not-allowed opacity-60"
-                          : "bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
-                      } text-white rounded-xl px-4 py-2`}
-                    >
-                      <Check className="w-5 h-5" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          data-testid={`delete-habit-btn-${habit.id}`}
-                          className="bg-red-600 hover:bg-red-700 text-white rounded-xl px-4 py-2"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent className="bg-[#1a1d2e] border-gray-700 text-white">
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Delete Habit?</AlertDialogTitle>
-                          <AlertDialogDescription className="text-gray-400">
-                            Are you sure you want to delete "{habit.name}"? This
-                            action cannot be undone.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel className="bg-gray-700 hover:bg-gray-600 text-white border-0">
-                            Cancel
-                          </AlertDialogCancel>
-                          <AlertDialogAction
-                            data-testid={`confirm-delete-habit-${habit.id}`}
-                            onClick={() => handleDeleteHabit(habit.id)}
-                            className="bg-red-600 hover:bg-red-700 text-white"
-                          >
-                            Delete
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            <div className="flex flex-wrap gap-4 relative z-10">
+              {(() => {
+                const level = stats.level;
+                const currentBadges = [];
+                if (level >= 0)
+                  currentBadges.push({
+                    name: "Beginner",
+                    style: "bg-slate-700 shadow-[0_0_15px_rgba(71,85,105,0.4)]",
+                  });
+                if (level >= 5)
+                  currentBadges.push({
+                    name: "Novice",
+                    style: "bg-green-700 shadow-[0_0_20px_rgba(34,197,94,0.5)]",
+                  });
+                if (level >= 10)
+                  currentBadges.push({
+                    name: "Intermediate",
+                    style:
+                      "bg-cyan-700 shadow-[0_0_20px_rgba(6,182,212,0.5)] border-cyan-400/50",
+                  });
+                if (level >= 15)
+                  currentBadges.push({
+                    name: "Expert",
+                    style:
+                      "bg-purple-700 shadow-[0_0_25px_rgba(168,85,247,0.6)] border-purple-400/50",
+                  });
+                if (level >= 20)
+                  currentBadges.push({
+                    name: "Master",
+                    style:
+                      "bg-gradient-to-r from-yellow-500 to-orange-600 shadow-[0_0_30px_rgba(234,179,8,0.8)] animate-pulse border-yellow-400",
+                  });
+
+                return currentBadges.map((badge, idx) => (
+                  <div
+                    key={idx}
+                    className={`px-6 py-2.5 rounded-xl text-white text-[11px] font-black uppercase flex items-center gap-2 border border-white/20 transition-all duration-500 hover:-translate-y-1 ${badge.style}`}
+                  >
+                    <Zap className="w-3 h-3 fill-white" /> {badge.name}
                   </div>
+                ));
+              })()}
+            </div>
+          </div>
+          <div className="bg-[#1a1d2e]/90 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border-[4px] border-white/5 relative overflow-hidden">
+            <h2 className="text-xl font-bold text-white mb-8 flex items-center gap-3 uppercase tracking-tight">
+              <Gift className="text-purple-400 w-6 h-6" /> Progress Trophies
+            </h2>
+            <div className="grid grid-cols-3 gap-5 relative z-10">
+              {[
+                {
+                  lvl: 5,
+                  name: "Bronze",
+                  unlockedStyle:
+                    "bg-gradient-to-br from-orange-400 to-orange-700 shadow-orange-500/50",
+                },
+                {
+                  lvl: 10,
+                  name: "Silver",
+                  unlockedStyle:
+                    "bg-gradient-to-br from-slate-300 to-slate-500 shadow-slate-400/50",
+                },
+                {
+                  lvl: 20,
+                  name: "Neon",
+                  unlockedStyle:
+                    "bg-gradient-to-br from-pink-500 to-purple-600 shadow-pink-500/50",
+                },
+              ].map((r, i) => (
+                <div
+                  key={i}
+                  className={`p-5 rounded-2xl border-2 text-center relative transition-all duration-500 flex flex-col justify-center items-center h-32 ${
+                    stats.level >= r.lvl
+                      ? `${r.unlockedStyle} border-white/30 scale-105 shadow-xl`
+                      : "bg-white/5 border-white/10 opacity-60 backdrop-blur-md"
+                  }`}
+                >
+                  {stats.level < r.lvl ? (
+                    <>
+                      <Lock className="w-6 h-6 text-white mb-2" />
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-white/80">
+                        LVL {r.lvl}
+                      </p>
+                      <p className="text-[12px] uppercase font-black text-white">
+                        {r.name}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Trophy className="w-8 h-8 text-white mb-2 drop-shadow-md" />
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-white/90">
+                        Unlocked
+                      </p>
+                      <p className="text-[14px] uppercase font-black text-white drop-shadow-lg">
+                        {r.name}
+                      </p>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
-          )}
+          </div>
         </div>
       </div>
+      <footer className="relative z-20 mt-auto bg-[#050816] border-t-2 border-cyan-500/50 py-12 px-8">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+          <div className="text-center md:text-left">
+            <h3 className="text-cyan-400 font-black italic tracking-tighter text-xl uppercase mb-2">
+              QuestHacker
+            </h3>
+            <p className="text-gray-400 font-mono text-[10px] uppercase tracking-widest">
+              Authorized Monitor // v2.5
+            </p>
+          </div>
+          <div className="flex gap-8 text-gray-400 text-[10px] uppercase font-black tracking-[0.2em]">
+            <span
+              onClick={() => navigate("/leaderboard")}
+              className="hover:text-cyan-400 cursor-pointer transition"
+            >
+              Leaderboard
+            </span>
+            <span className="hover:text-purple-400 cursor-pointer transition">
+              Support Center
+            </span>
+          </div>
+          <div className="text-[10px] text-gray-600 font-mono italic">
+            © 2025 // SECURED CONNECTION
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
