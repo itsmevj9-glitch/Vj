@@ -63,6 +63,33 @@ export default function Dashboard({ user, setUser }) {
   });
   const navigate = useNavigate();
 
+  // --- LOGIC: SECURITY CLEARANCE (Notifications & Audio Unlock) ---
+  const handleEnableAlerts = () => {
+    if (!("Notification" in window)) {
+      toast.error("Browser does not support desktop notifications.");
+      return;
+    }
+
+    Notification.requestPermission().then((permission) => {
+      if (permission === "granted") {
+        // Play a quick test sound to "unlock" the browser's audio engine
+        const testAudio = new Audio(
+          "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
+        );
+        testAudio.play().catch(() => {});
+
+        toast.success("SYSTEM LINKED", {
+          description: "Security clearance granted. Audio and popups active.",
+          className: "bg-[#1a1d2e] border-2 border-cyan-500 text-white",
+        });
+      } else {
+        toast.error("PERMISSION DENIED", {
+          description: "Please enable notifications in your browser settings.",
+        });
+      }
+    });
+  };
+
   const dailyQuote = useMemo(() => {
     const quotes = [
       "Small wins every day lead to big results every year.",
@@ -233,6 +260,8 @@ export default function Dashboard({ user, setUser }) {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#0a0e27] via-[#1a1d2e] to-[#0a0e27] relative overflow-hidden flex flex-col font-sans">
+      <NotificationManager habits={habits} />
+
       <div
         className="fixed inset-0 z-0 pointer-events-none opacity-[0.03]"
         style={{
@@ -243,17 +272,36 @@ export default function Dashboard({ user, setUser }) {
       <div className="bg-shape bg-shape-1"></div>
       <div className="bg-shape bg-shape-2"></div>
       <div className="bg-shape bg-shape-3"></div>
+
       <div className="glow-container relative z-10 py-8 px-4 max-w-7xl mx-auto flex-grow w-full">
+        {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent uppercase tracking-tight">
-              QuestHacker
+              HABIT TRACKER
             </h1>
             <p className="text-gray-400 mt-1 font-mono text-xs tracking-widest uppercase opacity-70">
               {user?.username || user?.email.split("@")[0]} // Operative
             </p>
           </div>
           <div className="flex gap-2">
+            {/* ENABLE ALERTS BUTTON */}
+            <button
+              onClick={handleEnableAlerts}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500 hover:text-white transition-all shadow-[0_0_15px_rgba(6,182,212,0.2)] group"
+            >
+              <Bell
+                className={`w-4 h-4 ${
+                  Notification.permission !== "granted" ? "animate-bounce" : ""
+                }`}
+              />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] hidden sm:block">
+                {Notification.permission === "granted"
+                  ? "Neural Link Active"
+                  : "Link System"}
+              </span>
+            </button>
+
             {!isIdentityClaimed && (
               <Dialog>
                 <DialogTrigger asChild>
@@ -300,6 +348,8 @@ export default function Dashboard({ user, setUser }) {
             </Button>
           </div>
         </div>
+
+        {/* ... (Rest of your UI: Motivation Hub, Stats Cards, Habit List, Trophies) */}
         <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-500 to-transparent shadow-[0_0_15px_#06b6d4] opacity-40 mb-10"></div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           <div className="bg-gradient-to-br from-cyan-900/40 to-blue-900/40 border-2 border-cyan-500/50 rounded-2xl p-6 flex items-center gap-4 shadow-lg shadow-cyan-500/10">
@@ -352,6 +402,8 @@ export default function Dashboard({ user, setUser }) {
             </p>
           </div>
         </div>
+
+        {/* STATS CARDS */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
           <div className="bg-[#1a1d2e]/90 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-cyan-500/20 card-hover border border-gray-800 transition-all">
             <div className="flex items-center gap-3 mb-3">
@@ -430,11 +482,8 @@ export default function Dashboard({ user, setUser }) {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-4 mb-10">
-          <div className="flex-1 h-[1px] bg-gradient-to-r from-transparent via-cyan-500 to-transparent opacity-20"></div>
-          <Zap className="w-5 h-5 text-cyan-500 animate-pulse" />
-          <div className="flex-1 h-[1px] bg-gradient-to-l from-transparent via-cyan-500 to-transparent opacity-20"></div>
-        </div>
+
+        {/* ACTIVE QUESTS SECTION */}
         <div className="bg-[#1a1d2e]/80 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-gray-800 mb-20">
           <div className="flex justify-between items-center mb-10">
             <h2 className="text-2xl font-bold text-white uppercase italic tracking-tighter">
@@ -508,6 +557,15 @@ export default function Dashboard({ user, setUser }) {
                   <h3 className="text-lg font-bold text-white group-hover:text-cyan-400 transition uppercase italic">
                     {habit.name}
                   </h3>
+                  {habit.notification_time && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Bell className="w-3 h-3 text-cyan-500/40" />
+                      <span className="text-sm text-cyan-500/60 font-mono italic tracking-tight">
+                        {habit.notification_time.slice(0, 5)}
+                      </span>
+                      <span className="text-gray-800/40 mx-1">|</span>
+                    </div>
+                  )}
                   <div className="mt-1 flex items-center gap-2">
                     <input
                       type="text"
@@ -562,7 +620,10 @@ export default function Dashboard({ user, setUser }) {
             ))}
           </div>
         </div>
+
+        {/* ACHIEVEMENT & TROPHY GRID */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-24 pt-16 border-t border-white/5">
+          {/* ACH TAGS */}
           <div className="bg-[#1a1d2e]/90 backdrop-blur-xl rounded-3xl p-8 border-[4px] border-cyan-500/40 relative overflow-hidden group shadow-2xl">
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-xl font-bold text-white flex items-center gap-3 uppercase tracking-tight">
@@ -577,52 +638,123 @@ export default function Dashboard({ user, setUser }) {
                     <Info className="w-5 h-5" />
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="bg-[#0a0e27] border-cyan-500/30 text-white max-w-2xl max-h-[80vh] overflow-y-auto shadow-[0_0_40px_rgba(6,182,212,0.3)]">
-                  <DialogHeader>
-                    <DialogTitle className="text-2xl font-black italic uppercase tracking-tighter text-cyan-400 flex items-center gap-2">
-                      <Terminal className="w-6 h-6" /> Progression Intel
+                <DialogContent className="bg-[#0a0e27]/95 border-[3px] border-cyan-500/30 text-white max-w-2xl max-h-[80vh] overflow-y-auto shadow-[0_0_50px_rgba(6,182,212,0.2)] backdrop-blur-2xl">
+                  <DialogHeader className="border-b border-white/10 pb-4">
+                    <DialogTitle className="text-3xl font-black italic uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-600 flex items-center gap-3">
+                      <Terminal className="w-8 h-8 text-cyan-400" /> Progression
+                      Intel
                     </DialogTitle>
                   </DialogHeader>
-                  <div className="space-y-8 py-6 font-sans text-white">
-                    <div>
-                      <h4 className="text-xs font-mono uppercase text-gray-500 tracking-[0.3em] mb-4 flex items-center gap-2">
-                        <Crown className="w-4 h-4 text-yellow-500" /> Ranks
+
+                  <div className="space-y-10 py-8 font-sans">
+                    {/* RANKS SECTION */}
+                    <div className="relative">
+                      <h4 className="text-[10px] font-mono uppercase text-cyan-500/60 tracking-[0.4em] mb-6 flex items-center gap-3">
+                        <span className="h-[1px] w-8 bg-cyan-500/40"></span>{" "}
+                        Ranks & Titles
                       </h4>
-                      <div className="space-y-3">
-                        {progressionGuide.ranks.map((r, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/10"
-                          >
-                            <div>
-                              <p className="font-bold text-white uppercase italic">
-                                {r.title}
-                              </p>
-                              <p className="text-xs text-gray-500">{r.desc}</p>
+                      <div className="grid gap-6">
+                        {progressionGuide.ranks.map((r, i) => {
+                          // Calculate progress to this specific rank
+                          const isUnlocked = stats.level >= r.lvl;
+                          const nextRank =
+                            progressionGuide.ranks[i + 1]?.lvl || r.lvl + 5;
+                          const progressToThis = Math.min(
+                            100,
+                            Math.max(0, (stats.level / r.lvl) * 100)
+                          );
+
+                          return (
+                            <div
+                              key={i}
+                              className={`group relative p-5 rounded-2xl border transition-all duration-300 ${
+                                isUnlocked
+                                  ? "bg-cyan-500/5 border-cyan-500/40"
+                                  : "bg-white/5 border-white/10 opacity-60"
+                              }`}
+                            >
+                              <div className="flex justify-between items-start mb-4">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <p
+                                      className={`font-black uppercase italic tracking-tight text-xl ${
+                                        isUnlocked
+                                          ? "text-cyan-400"
+                                          : "text-white"
+                                      }`}
+                                    >
+                                      {r.title}
+                                    </p>
+                                    {isUnlocked && (
+                                      <Check className="w-4 h-4 text-cyan-400" />
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-gray-500 font-mono italic">
+                                    {r.desc}
+                                  </p>
+                                </div>
+                                <span className="text-sm font-black font-mono text-gray-400">
+                                  REQ: LVL {r.lvl}
+                                </span>
+                              </div>
+
+                              {/* Individual Rank Progress Bar */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-[9px] font-mono uppercase tracking-widest">
+                                  <span className="text-gray-500">
+                                    Sync Status
+                                  </span>
+                                  <span
+                                    className={
+                                      isUnlocked
+                                        ? "text-cyan-400"
+                                        : "text-gray-500"
+                                    }
+                                  >
+                                    {isUnlocked
+                                      ? "COMPLETE"
+                                      : `${Math.floor(progressToThis)}%`}
+                                  </span>
+                                </div>
+                                <div className="h-1.5 w-full bg-black/40 rounded-full overflow-hidden border border-white/5">
+                                  <div
+                                    className={`h-full transition-all duration-1000 ${
+                                      isUnlocked
+                                        ? "bg-cyan-500 shadow-[0_0_10px_#06b6d4]"
+                                        : "bg-gray-700"
+                                    }`}
+                                    style={{
+                                      width: `${
+                                        isUnlocked ? 100 : progressToThis
+                                      }%`,
+                                    }}
+                                  ></div>
+                                </div>
+                              </div>
                             </div>
-                            <span className="text-cyan-500 font-black">
-                              LVL {r.lvl}
-                            </span>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
+
+                    {/* TAGS SECTION */}
                     <div>
-                      <h4 className="text-xs font-mono uppercase text-gray-500 tracking-[0.3em] mb-4 flex items-center gap-2">
-                        <Zap className="w-4 h-4 text-cyan-400" /> Tags
+                      <h4 className="text-[10px] font-mono uppercase text-purple-500/60 tracking-[0.4em] mb-6 flex items-center gap-3">
+                        <span className="h-[1px] w-8 bg-purple-500/40"></span>{" "}
+                        Neural Tag Clearances
                       </h4>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {progressionGuide.tags.map((t, i) => (
                           <div
                             key={i}
-                            className="p-3 bg-white/5 rounded-xl border border-white/5 flex justify-between items-center"
+                            className="flex justify-between items-center p-4 bg-[#1a1d2e] rounded-xl border border-white/5 shadow-inner hover:border-purple-500/30 transition-colors"
                           >
                             <span
-                              className={`text-xs font-black uppercase ${t.color}`}
+                              className={`text-xs font-black uppercase tracking-widest ${t.color}`}
                             >
                               {t.name}
                             </span>
-                            <span className="text-[10px] text-gray-500">
+                            <span className="px-3 py-1 bg-white/5 rounded-md text-[9px] font-mono text-gray-500 border border-white/5">
                               {t.req}
                             </span>
                           </div>
@@ -633,7 +765,6 @@ export default function Dashboard({ user, setUser }) {
                 </DialogContent>
               </Dialog>
             </div>
-
             <div className="flex flex-wrap gap-4 relative z-10">
               {(() => {
                 const level = stats.level;
@@ -666,7 +797,6 @@ export default function Dashboard({ user, setUser }) {
                     style:
                       "bg-gradient-to-r from-yellow-500 to-orange-600 shadow-[0_0_30px_rgba(234,179,8,0.8)] animate-pulse border-yellow-400",
                   });
-
                 return currentBadges.map((badge, idx) => (
                   <div
                     key={idx}
@@ -678,6 +808,8 @@ export default function Dashboard({ user, setUser }) {
               })()}
             </div>
           </div>
+
+          {/* TROPHIES */}
           <div className="bg-[#1a1d2e]/90 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border-[4px] border-white/5 relative overflow-hidden">
             <h2 className="text-xl font-bold text-white mb-8 flex items-center gap-3 uppercase tracking-tight">
               <Gift className="text-purple-400 w-6 h-6" /> Progress Trophies
@@ -742,7 +874,7 @@ export default function Dashboard({ user, setUser }) {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="text-center md:text-left">
             <h3 className="text-cyan-400 font-black italic tracking-tighter text-xl uppercase mb-2">
-              QuestHacker
+              HABIT TRACKER
             </h3>
             <p className="text-gray-400 font-mono text-[10px] uppercase tracking-widest">
               Authorized Monitor // v2.5
