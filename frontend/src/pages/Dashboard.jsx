@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +15,6 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -44,6 +42,9 @@ import {
   Terminal,
 } from "lucide-react";
 
+// --- IMPORT FIREBASE LOGIC ---
+import { requestForToken } from "../lib/firebase";
+
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
@@ -63,31 +64,63 @@ export default function Dashboard({ user, setUser }) {
   });
   const navigate = useNavigate();
 
-  // --- LOGIC: SECURITY CLEARANCE (Notifications & Audio Unlock) ---
-  const handleEnableAlerts = () => {
+  // --- NEURAL LINK: CONNECTS BROWSER TO PYTHON SERVER ---
+  const handleEnableAlerts = async () => {
     if (!("Notification" in window)) {
-      toast.error("Browser does not support desktop notifications.");
+      toast.error("HARDWARE ERROR", {
+        description: "This browser does not support neural links.",
+      });
       return;
     }
 
-    Notification.requestPermission().then((permission) => {
+    try {
+      const permission = await Notification.requestPermission();
+
       if (permission === "granted") {
-        // Play a quick test sound to "unlock" the browser's audio engine
+        // 1. Audio Engine Test (Unlocks browser audio policy)
         const testAudio = new Audio(
           "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
         );
-        testAudio.play().catch(() => {});
+        testAudio.volume = 0.5;
+        testAudio
+          .play()
+          .catch((e) => console.warn("Audio start suppressed:", e));
 
-        toast.success("SYSTEM LINKED", {
-          description: "Security clearance granted. Audio and popups active.",
-          className: "bg-[#1a1d2e] border-2 border-cyan-500 text-white",
-        });
+        toast.info("ESTABLISHING LINK...", { duration: 2000 });
+
+        // 2. Get the unique Device ID (Token) from Firebase
+        const currentToken = await requestForToken();
+
+        if (currentToken) {
+          // 3. Transmit Token to Python Backend
+          await axios.post(
+            `${API}/auth/fcm-token`,
+            { token: currentToken },
+            getAuthHeader()
+          );
+
+          toast.success("SYSTEM ONLINE", {
+            description:
+              "Background protocols active. You may now close this tab.",
+            className: "bg-[#1a1d2e] border-2 border-cyan-500 text-white",
+            icon: <Zap className="text-cyan-400 animate-pulse" />,
+          });
+        } else {
+          toast.error("SIGNAL LOST", {
+            description: "Could not generate device token.",
+          });
+        }
       } else {
-        toast.error("PERMISSION DENIED", {
+        toast.error("ACCESS DENIED", {
           description: "Please enable notifications in your browser settings.",
         });
       }
-    });
+    } catch (error) {
+      console.error("Link Error:", error);
+      toast.error("CONNECTION REFUSED", {
+        description: "Server handshake failed.",
+      });
+    }
   };
 
   const dailyQuote = useMemo(() => {
@@ -241,7 +274,12 @@ export default function Dashboard({ user, setUser }) {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await axios.post(`${API}/auth/logout`, {}, getAuthHeader());
+    } catch (error) {
+      console.error("Logout log failed", error);
+    }
     localStorage.clear();
     setUser(null);
     navigate("/auth");
@@ -274,9 +312,9 @@ export default function Dashboard({ user, setUser }) {
       <div className="bg-shape bg-shape-3"></div>
 
       <div className="glow-container relative z-10 py-8 px-4 max-w-7xl mx-auto flex-grow w-full">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <div>
+        {/* HEADER */}
+        <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-6">
+          <div className="text-center md:text-left">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent uppercase tracking-tight">
               HABIT TRACKER
             </h1>
@@ -284,11 +322,15 @@ export default function Dashboard({ user, setUser }) {
               {user?.username || user?.email.split("@")[0]} // Operative
             </p>
           </div>
-          <div className="flex gap-2">
-            {/* ENABLE ALERTS BUTTON */}
+
+          <div className="grid grid-cols-2 gap-3 w-full md:w-auto md:flex">
             <button
               onClick={handleEnableAlerts}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500 hover:text-white transition-all shadow-[0_0_15px_rgba(6,182,212,0.2)] group"
+              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-xl border transition-all shadow-[0_0_15px_rgba(6,182,212,0.2)] group w-full md:w-auto ${
+                Notification.permission === "granted"
+                  ? "bg-green-500/10 text-green-400 border-green-500/30 hover:bg-green-500/20"
+                  : "bg-cyan-500/10 text-cyan-400 border-cyan-500/30 hover:bg-cyan-500 hover:text-white"
+              }`}
             >
               <Bell
                 className={`w-4 h-4 ${
@@ -297,7 +339,7 @@ export default function Dashboard({ user, setUser }) {
               />
               <span className="text-[10px] font-black uppercase tracking-[0.2em] hidden sm:block">
                 {Notification.permission === "granted"
-                  ? "Neural Link Active"
+                  ? "System Linked"
                   : "Link System"}
               </span>
             </button>
@@ -305,7 +347,7 @@ export default function Dashboard({ user, setUser }) {
             {!isIdentityClaimed && (
               <Dialog>
                 <DialogTrigger asChild>
-                  <button className="p-2 bg-cyan-500/20 text-cyan-400 rounded-xl hover:bg-cyan-500/40 transition border border-cyan-500/30 relative shadow-[0_0_10px_rgba(6,182,212,0.3)]">
+                  <button className="flex items-center justify-center p-2 bg-cyan-500/20 text-cyan-400 rounded-xl hover:bg-cyan-500/40 transition border border-cyan-500/30 relative shadow-[0_0_10px_rgba(6,182,212,0.3)] w-full md:w-auto">
                     <UserCircle className="w-6 h-6" />
                     <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#0a0e27] animate-pulse"></span>
                   </button>
@@ -331,25 +373,26 @@ export default function Dashboard({ user, setUser }) {
                 </DialogContent>
               </Dialog>
             )}
+
             <button
               onClick={() => navigate("/leaderboard")}
-              className="group relative flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-600 hover:scale-105 transition shadow-lg shadow-purple-500/40"
+              className="group relative flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-600 hover:scale-105 transition shadow-lg shadow-purple-500/40 w-full md:w-auto"
             >
               <Crown className="w-5 h-5 text-white" />
               <span className="text-white font-medium hidden sm:block">
                 Leaderboard
               </span>
             </button>
+
             <Button
               onClick={handleLogout}
-              className="bg-red-600/20 text-red-500 border border-red-500/40 hover:bg-red-600 hover:text-white rounded-xl px-4 py-2 transition-all"
+              className="bg-red-600/20 text-red-500 border border-red-500/40 hover:bg-red-600 hover:text-white rounded-xl px-4 py-2 transition-all w-full md:w-auto flex justify-center"
             >
               <LogOut className="w-5 h-5" />
             </Button>
           </div>
         </div>
 
-        {/* ... (Rest of your UI: Motivation Hub, Stats Cards, Habit List, Trophies) */}
         <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-500 to-transparent shadow-[0_0_15px_#06b6d4] opacity-40 mb-10"></div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           <div className="bg-gradient-to-br from-cyan-900/40 to-blue-900/40 border-2 border-cyan-500/50 rounded-2xl p-6 flex items-center gap-4 shadow-lg shadow-cyan-500/10">
@@ -403,7 +446,6 @@ export default function Dashboard({ user, setUser }) {
           </div>
         </div>
 
-        {/* STATS CARDS */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
           <div className="bg-[#1a1d2e]/90 backdrop-blur-xl rounded-2xl p-6 shadow-lg shadow-cyan-500/20 card-hover border border-gray-800 transition-all">
             <div className="flex items-center gap-3 mb-3">
@@ -487,17 +529,17 @@ export default function Dashboard({ user, setUser }) {
         <div className="bg-[#1a1d2e]/80 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-gray-800 mb-20">
           <div className="flex justify-between items-center mb-10">
             <h2 className="text-2xl font-bold text-white uppercase italic tracking-tighter">
-              Active Quests
+              Active Habits
             </h2>
             <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl px-6 py-3 shadow-lg shadow-cyan-500/50 hover:scale-105 transition uppercase font-bold text-xs tracking-widest">
-                  <Plus className="w-5 h-5 mr-2" /> New Quest
+                  <Plus className="w-5 h-5 mr-2" /> New Habit
                 </Button>
               </DialogTrigger>
               <DialogContent className="bg-[#1a1d2e] border-gray-700 text-white">
                 <DialogHeader>
-                  <DialogTitle>Quest Configuration</DialogTitle>
+                  <DialogTitle>Habit Configuration</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleCreateHabit} className="space-y-4 pt-4">
                   <Input
@@ -507,6 +549,7 @@ export default function Dashboard({ user, setUser }) {
                     onChange={(e) =>
                       setHabitForm({ ...habitForm, name: e.target.value })
                     }
+                    required
                   />
                   <Input
                     placeholder="Note"
@@ -600,7 +643,7 @@ export default function Dashboard({ user, setUser }) {
                     </AlertDialogTrigger>
                     <AlertDialogContent className="bg-[#1a1d2e] border-gray-700 text-white">
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Cancel Quest?</AlertDialogTitle>
+                        <AlertDialogTitle>Cancel Habit?</AlertDialogTitle>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel className="bg-gray-700 text-white">
@@ -655,7 +698,6 @@ export default function Dashboard({ user, setUser }) {
                       </h4>
                       <div className="grid gap-6">
                         {progressionGuide.ranks.map((r, i) => {
-                          // Calculate progress to this specific rank
                           const isUnlocked = stats.level >= r.lvl;
                           const nextRank =
                             progressionGuide.ranks[i + 1]?.lvl || r.lvl + 5;
@@ -870,8 +912,11 @@ export default function Dashboard({ user, setUser }) {
           </div>
         </div>
       </div>
+
+      {/* UPDATED FOOTER SECTION */}
       <footer className="relative z-20 mt-auto bg-[#050816] border-t-2 border-cyan-500/50 py-12 px-8">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+          {/* LEFT: Branding */}
           <div className="text-center md:text-left">
             <h3 className="text-cyan-400 font-black italic tracking-tighter text-xl uppercase mb-2">
               HABIT TRACKER
@@ -880,19 +925,25 @@ export default function Dashboard({ user, setUser }) {
               Authorized Monitor // v2.5
             </p>
           </div>
-          <div className="flex gap-8 text-gray-400 text-[10px] uppercase font-black tracking-[0.2em]">
-            <span
-              onClick={() => navigate("/leaderboard")}
-              className="hover:text-cyan-400 cursor-pointer transition"
-            >
-              Leaderboard
-            </span>
-            <span className="hover:text-purple-400 cursor-pointer transition">
-              Support Center
-            </span>
-          </div>
-          <div className="text-[10px] text-gray-600 font-mono italic">
+
+          {/* CENTER: Copyright (Moved to middle for balance) */}
+          <div className="text-[10px] text-white-600 font-mono italic order-3 md:order-2">
             © 2025 // SECURED CONNECTION
+          </div>
+
+          {/* RIGHT: Support Section */}
+          <div className="flex flex-col items-center md:items-end gap-1 order-2 md:order-3">
+            <a
+              href="https://mail.google.com/mail/?view=cm&fs=1&to="
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white-400 hover:text-purple-400 text-[10px] uppercase font-black tracking-[0.2em] transition cursor-pointer flex items-center gap-2"
+            >
+              Support Center
+            </a>
+            <span className="text-white-600 font-mono text-[10px] tracking-wider">
+              admin@admin.com
+            </span>
           </div>
         </div>
       </footer>

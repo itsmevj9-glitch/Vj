@@ -192,7 +192,7 @@ export default function AuthPage({ setUser }) {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-125 text-white rounded-xl py-5 font-black uppercase tracking-widest shadow-[0_0_25px_rgba(6,182,212,0.4)] transition-all mt-6"
+              className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:brightness-125 text-white rounded-xl py-5  uppercase  shadow-[0_0_25px_rgba(6,182,212,0.4)] transition-all mt-6"
             >
               {loading
                 ? "LINKING..."

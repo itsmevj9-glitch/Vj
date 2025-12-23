@@ -7,7 +7,6 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
-  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -23,8 +22,9 @@ import {
   Trash2,
   LogOut,
   Search,
-  Terminal,
   Crown,
+  FileText,
+  RefreshCw,
 } from "lucide-react";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
@@ -40,6 +40,15 @@ export default function AdminPanel({ user, setUser }) {
   const getAuthHeader = () => ({
     headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
   });
+
+  const isUserActive = (lastActiveIso) => {
+    if (!lastActiveIso) return false;
+    const lastActive = new Date(lastActiveIso);
+    const now = new Date();
+    const diffInTime = now.getTime() - lastActive.getTime();
+    const diffInDays = diffInTime / (1000 * 3600 * 24);
+    return diffInDays < 7;
+  };
 
   const fetchData = async () => {
     try {
@@ -71,7 +80,12 @@ export default function AdminPanel({ user, setUser }) {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await axios.post(`${API}/auth/logout`, {}, getAuthHeader());
+    } catch (e) {
+      console.error("Logout log failed", e);
+    }
     localStorage.clear();
     setUser(null);
     navigate("/auth");
@@ -93,23 +107,27 @@ export default function AdminPanel({ user, setUser }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0e27] relative overflow-x-hidden flex flex-col font-sans">
+    <div className="min-h-screen bg-[#0a0e27] relative overflow-x-hidden flex flex-col font-sans text-white">
+      {/* --- BACKGROUND EFFECTS --- */}
       <div
-        className="fixed inset-0 z-0 pointer-events-none opacity-[0.05]"
+        className="fixed inset-0 z-0 pointer-events-none opacity-[0.03]"
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
         }}
       ></div>
-      <div className="bg-shape bg-shape-1 opacity-20"></div>
+      <div className="fixed top-0 left-0 w-[500px] h-[500px] bg-red-600/10 rounded-full blur-[128px] pointer-events-none -translate-x-1/2 -translate-y-1/2 z-0"></div>
+      <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-orange-600/5 rounded-full blur-[128px] pointer-events-none translate-x-1/4 translate-y-1/4 z-0"></div>
 
+      {/* --- MAIN CONTENT --- */}
       <div className="relative z-10 py-12 px-4 md:px-16 lg:px-24 w-full max-w-[1400px] mx-auto flex-grow">
-        <div className="relative border-2 border-red-500/40 rounded-[2.5rem] p-6 md:p-10 shadow-[0_0_40px_rgba(239,68,68,0.15)] bg-[#0a0e27]/40 backdrop-blur-sm">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-12">
+        <div className="relative border-2 border-red-500/40 rounded-[2.5rem] p-6 md:p-10 shadow-[0_0_40px_rgba(239,68,68,0.15)] bg-[#0a0e27]/90 backdrop-blur-md">
+          {/* Header */}
+          <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-10">
             <div className="text-center md:text-left">
               <h1 className="text-4xl md:text-5xl font-black italic tracking-tighter bg-gradient-to-r from-red-500 via-orange-500 to-yellow-500 bg-clip-text text-transparent uppercase leading-tight">
-                Admin
+                Admin Panel
               </h1>
-              <p className="text-white-500 font-mono text-[10px] uppercase tracking-[0.4em] mt-1">
+              <p className="text-gray-400 font-mono text-[10px] uppercase tracking-[0.4em] mt-1">
                 Authorized Root Access Only
               </p>
             </div>
@@ -121,6 +139,7 @@ export default function AdminPanel({ user, setUser }) {
             </Button>
           </div>
 
+          {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
             {[
               {
@@ -136,7 +155,7 @@ export default function AdminPanel({ user, setUser }) {
                 color: "orange",
               },
               {
-                label: "Inactive",
+                label: "Inactive (7d+)",
                 val: stats.inactive_users,
                 icon: UserX,
                 color: "yellow",
@@ -150,7 +169,7 @@ export default function AdminPanel({ user, setUser }) {
             ].map((item, i) => (
               <div
                 key={i}
-                className={`bg-[#1a1d2e]/90 border-[3px] border-${item.color}-500/50 p-5 rounded-2xl shadow-lg shadow-${item.color}-500/10`}
+                className={`bg-[#1a1d2e] border-[3px] border-${item.color}-500/50 p-5 rounded-2xl shadow-lg shadow-${item.color}-500/10`}
               >
                 <div className="flex items-center gap-3">
                   <div
@@ -169,6 +188,7 @@ export default function AdminPanel({ user, setUser }) {
             ))}
           </div>
 
+          {/* Search & Leaderboard */}
           <div className="bg-[#1a1d2e]/80 backdrop-blur-md border border-white/10 rounded-2xl p-4 mb-12 flex flex-wrap gap-6 items-center shadow-xl">
             <Button
               onClick={() => navigate("/leaderboard")}
@@ -176,7 +196,6 @@ export default function AdminPanel({ user, setUser }) {
             >
               <Crown className="w-4 h-4 mr-2" /> View Leaderboard
             </Button>
-
             <div className="flex-1 min-w-[280px] relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
               <Input
@@ -188,7 +207,8 @@ export default function AdminPanel({ user, setUser }) {
             </div>
           </div>
 
-          <div className="bg-[#1a1d2e]/90 rounded-[2rem] p-6 border border-white/10 shadow-2xl mb-4 overflow-hidden">
+          {/* Users Table */}
+          <div className="bg-[#1a1d2e] rounded-[2rem] p-6 border border-white/10 shadow-2xl mb-8 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -201,97 +221,124 @@ export default function AdminPanel({ user, setUser }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {filteredUsers.map((u) => (
-                    <tr
-                      key={u.id}
-                      className="hover:bg-red-500/10 transition-colors"
-                    >
-                      <td className="py-5 px-4">
-                        <div className="text-white font-bold text-lg leading-tight">
-                          {u.username || u.email}
-                        </div>
-                        <div className="text-[10px] text-gray-500 font-mono">
-                          {u.email}
-                        </div>
-                      </td>
-                      <td className="py-5 px-4">
-                        <span className="text-red-500 font-black italic text-lg uppercase">
-                          LVL {u.level}
-                        </span>
-                      </td>
-                      <td className="py-5 px-4 text-white font-mono">
-                        {u.xp} XP
-                      </td>
-                      <td className="py-5 px-4">
-                        {u.is_admin ? (
-                          <span className="px-4 py-1.5 bg-red-600 text-white rounded text-[9px] font-black uppercase tracking-tighter">
-                            Admin
+                  {filteredUsers.map((u) => {
+                    const active = isUserActive(u.last_active);
+                    return (
+                      <tr
+                        key={u.id}
+                        className="hover:bg-red-500/10 transition-colors"
+                      >
+                        <td className="py-5 px-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${
+                                active ? "bg-emerald-500" : "bg-red-500"
+                              }`}
+                              title={active ? "Active" : "Inactive"}
+                            />
+                            <div>
+                              <div className="text-white font-bold text-lg leading-tight">
+                                {u.username || u.email.split("@")[0]}
+                              </div>
+                              <div className="text-[10px] text-gray-500 font-mono">
+                                {u.email}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-5 px-4">
+                          <span className="text-red-500 font-black italic text-lg uppercase">
+                            LVL {u.level}
                           </span>
-                        ) : (
-                          <span className="px-4 py-1.5 bg-gray-800 text-gray-400 rounded text-[9px] font-black uppercase">
-                            Operative
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-5 px-4 text-right">
-                        {!u.is_admin && (
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button className="bg-red-600/10 text-red-500 border border-red-500/30 hover:bg-red-600 hover:text-white px-4 py-2">
-                                <Trash2 className="w-5 h-5" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent className="bg-[#1a1d2e] border-gray-700 text-white">
-                              <AlertDialogHeader>
-                                <AlertDialogTitle className="font-black italic text-red-500 uppercase text-2xl">
-                                  Purge Record?
-                                </AlertDialogTitle>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel className="bg-gray-800 text-white border-0">
-                                  Abort
-                                </AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleDeleteUser(u.id)}
-                                  className="bg-red-600 text-white font-bold uppercase"
-                                >
-                                  Purge
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="py-5 px-4 text-white font-mono">
+                          {u.xp} XP
+                        </td>
+                        <td className="py-5 px-4">
+                          {u.is_admin ? (
+                            <span className="px-3 py-1 bg-red-600 text-white rounded text-[9px] font-black uppercase">
+                              Admin
+                            </span>
+                          ) : (
+                            <span className="px-3 py-1 bg-gray-800 text-gray-400 rounded text-[9px] font-black uppercase">
+                              Operative
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-5 px-4 text-right">
+                          {!u.is_admin && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button className="bg-red-600/10 text-red-500 border border-red-500/30 hover:bg-red-600 hover:text-white px-3 py-2">
+                                  <Trash2 className="w-5 h-5" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent className="bg-[#1a1d2e] border-gray-700 text-white">
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle className="font-black italic text-red-500 uppercase text-2xl">
+                                    Delete Record?
+                                  </AlertDialogTitle>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel className="bg-gray-800 text-white border-0">
+                                    Cancel
+                                  </AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDeleteUser(u.id)}
+                                    className="bg-red-600 text-white font-bold uppercase"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
+
+          {/* --- INTERNAL CARD ACTIONS (Logs & Sync) --- */}
+          <div className="border-t border-white/10 pt-6 flex justify-end gap-4">
+            <Button
+              onClick={() => navigate("/admin/logs")}
+              className="bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold uppercase tracking-widest px-6 py-6 rounded-xl shadow-lg border border-white/10"
+            >
+              <FileText className="w-4 h-4 mr-2 text-gray-400" />
+              System Logs
+            </Button>
+
+            <Button
+              onClick={() => {
+                setLoading(true);
+                fetchData();
+                toast.success("Database Synced");
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-widest px-6 py-6 rounded-xl shadow-lg shadow-red-600/20"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Force Sync
+            </Button>
+          </div>
         </div>
       </div>
 
-      <footer className="relative z-20 mt-auto bg-[#050816] border-t-2 border-red-500/50 py-12 px-8">
+      {/* --- RESTORED PAGE FOOTER (No buttons, just branding) --- */}
+      <footer className="relative z-20 mt-auto bg-[#050816]/90 backdrop-blur-md border-t-2 border-red-500/50 py-12 px-8">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="text-center md:text-left">
             <h3 className="text-red-500 font-black italic text-2xl uppercase tracking-tighter leading-none mb-1">
-              V Command Nexus
+              HABIT TRACKER
             </h3>
             <p className="text-white-400 font-mono text-[10px] uppercase tracking-[0.4em]">
               Authorized Root Access Protocol
             </p>
           </div>
-          <div className="flex gap-10 text-gray-300 text-[10px] uppercase font-black tracking-[0.2em]">
-            <span className="hover:text-red-500 cursor-pointer transition">
-              Logs
-            </span>
-            <span className="hover:text-red-500 cursor-pointer transition">
-              Sync
-            </span>
-            <span className="hover:text-red-500 cursor-pointer transition">
-              Support
-            </span>
-          </div>
+
           <div className="text-[10px] text-white-700 font-mono italic tracking-widest uppercase">
             © 2025 // ROOT_TERMINAL
           </div>

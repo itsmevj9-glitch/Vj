@@ -3,8 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import AuthPage from "./pages/AuthPage";
 import Dashboard from "./pages/Dashboard";
 import AdminPanel from "./pages/AdminPanel";
-import { Toaster } from "./components/ui/sonner";
+import LogsPage from "./pages/LogsPage"; 
 import Leaderboard from "./pages/Leaderboard";
+import { Toaster } from "./components/ui/sonner";
 
 import "./App.css";
 
@@ -63,6 +64,16 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          <Route
+            path="/admin/logs"
+            element={
+              <ProtectedRoute adminOnly>
+                <LogsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/leaderboard" element={<Leaderboard />} />
           <Route
             path="/"
             element={
@@ -71,7 +82,6 @@ function App() {
               />
             }
           />
-          <Route path="/leaderboard" element={<Leaderboard />} />
         </Routes>
       </BrowserRouter>
       <Toaster position="top-right" />

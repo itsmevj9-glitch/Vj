@@ -1,43 +1,37 @@
 import { useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import { Bell, WifiOff, Wifi, Zap } from "lucide-react";
-import { onMessageListener } from "../../lib/firebase"; // Ensure this path is correct
+import { WifiOff, Wifi, Zap } from "lucide-react";
+import { onMessageListener } from "../../lib/firebase";
 
-// Softer, modern "UI-confirm" sound
+// Sound Effect
 const NOTIFICATION_SOUND_URL =
   "https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3";
 const audio = new Audio(NOTIFICATION_SOUND_URL);
 
 export default function NotificationManager({ habits }) {
+  // Debug Log
   useEffect(() => {
-    console.log("🚀 SYSTEM HEARTBEAT: Notification Manager is Alive");
-    console.log("Current Habits in Memory:", habits);
-  }, [habits]);
-  const triggerSound = useCallback(() => {
-    // Only play if not in Silent Mode
-    if (localStorage.getItem("notifications_disabled") === "true") return;
+    console.log("🚀 SYSTEM HEARTBEAT: Listening for Backend Signals...");
+  }, []);
 
+  const triggerSound = useCallback(() => {
+    if (localStorage.getItem("notifications_disabled") === "true") return;
     audio.currentTime = 0;
     audio.volume = 0.4;
-    audio.play().catch(() => {
-      console.warn("Audio blocked. System requires user interaction first.");
-    });
+    audio
+      .play()
+      .catch(() => console.warn("Audio blocked (User interaction needed)"));
   }, []);
 
   const triggerAlert = useCallback(
-    (title, body, habitId = null) => {
-      // 1. Check Global Disable Switch
-      if (localStorage.getItem("notifications_disabled") === "true") {
-        console.log("System Muted: Alert suppressed.");
-        return;
-      }
+    (title, body) => {
+      // 1. Check Mute Switch
+      if (localStorage.getItem("notifications_disabled") === "true") return;
 
-      const today = new Date().toDateString();
-
-      // 2. Play Audio Ping
+      // 2. Play Sound
       triggerSound();
 
-      // 3. Browser Native Popup (For background/minimized)
+      // 3. Browser Notification (If in background)
       if ("Notification" in window && Notification.permission === "granted") {
         new Notification(title, {
           body: body,
@@ -45,7 +39,7 @@ export default function NotificationManager({ habits }) {
         });
       }
 
-      // 4. In-App UI Toast
+      // 4. In-App Toast (If in foreground)
       toast.info(title, {
         description: (
           <div className="flex flex-col gap-1">
@@ -60,51 +54,26 @@ export default function NotificationManager({ habits }) {
         icon: <Zap className="text-cyan-400 animate-pulse" />,
         className:
           "bg-[#0a0e27]/90 border-2 border-cyan-500/50 text-white backdrop-blur-xl",
-        duration: 10000,
+        duration: 8000,
       });
-
-      // 5. Mark as notified for today
-      if (habitId) {
-        localStorage.setItem(`notified_${habitId}`, today);
-      }
     },
     [triggerSound]
   );
 
   useEffect(() => {
-    // --- LOCAL SCHEDULER (When tab is open) ---
-    const checkSchedule = () => {
-      const now = new Date();
-      const currentTime =
-        now.getHours().toString().padStart(2, "0") +
-        ":" +
-        now.getMinutes().toString().padStart(2, "0");
+    // -----------------------------------------------------------
+    // ❌ REMOVED: The Local 'checkSchedule' & 'setInterval'
+    // We no longer guess the time here. We trust the Backend.
+    // -----------------------------------------------------------
 
-      habits?.forEach((habit) => {
-        if (!habit.notification_time) return;
-        const habitTime = habit.notification_time.slice(0, 5);
-
-        if (habitTime === currentTime) {
-          const lastNotified = localStorage.getItem(`notified_${habit.id}`);
-          const today = new Date().toDateString();
-          if (lastNotified !== today) {
-            triggerAlert(
-              `MISSION READY: ${habit.name}`,
-              "Execute your daily quest.",
-              habit.id
-            );
-          }
-        }
-      });
-    };
-
-    // --- FIREBASE FOREGROUND LISTENER ---
-    // This catches messages sent from Firebase while the app is open
+    // ✅ FIREBASE LISTENER (The only source of truth)
+    // This wakes up ONLY when the Python backend sends a message.
     onMessageListener()
       .then((payload) => {
+        console.log("📩 INCOMING TRANSMISSION:", payload);
         triggerAlert(payload.notification.title, payload.notification.body);
       })
-      .catch((err) => console.log("Firebase listener failed: ", err));
+      .catch((err) => console.log("Firebase listener error: ", err));
 
     // --- NETWORK STATUS LISTENERS ---
     const handleOffline = () => {
@@ -125,14 +94,12 @@ export default function NotificationManager({ habits }) {
 
     window.addEventListener("offline", handleOffline);
     window.addEventListener("online", handleOnline);
-    const interval = setInterval(checkSchedule, 15000);
 
     return () => {
       window.removeEventListener("offline", handleOffline);
       window.removeEventListener("online", handleOnline);
-      clearInterval(interval);
     };
-  }, [habits, triggerAlert]);
+  }, [triggerAlert]);
 
   return null;
 }
