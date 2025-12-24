@@ -262,7 +262,39 @@ export default function Dashboard({ user, setUser }) {
       toast.error(error.response?.data?.detail || "Update Failed");
     }
   }
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState(user?.username || "");
 
+  const handleSaveUsername = async () => {
+    const nameToSave = tempName.trim();
+
+    const isValid = /^[a-zA-Z0-9]+$/.test(nameToSave);
+
+    if (!nameToSave) return setIsEditingName(false);
+
+    if (!isValid) {
+      toast.error("INVALID IDENTITY", {
+        description:
+          "Only alphabets and numbers are allowed. No spaces or symbols.",
+      });
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      await axios.patch(
+        "http://127.0.0.1:8000/api/auth/username",
+        { username: nameToSave },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setUser((prev) => ({ ...prev, username: nameToSave }));
+      toast.success("IDENTITY UPDATED");
+      setIsEditingName(false);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Update failed");
+    }
+  };
   const handleUpdateDescription = async (habitId, newDesc) => {
     try {
       await axios.patch(
@@ -305,7 +337,7 @@ export default function Dashboard({ user, setUser }) {
   const handleDeleteHabit = async (habitId) => {
     try {
       await axios.delete(`${API}/habits/${habitId}`, getAuthHeader());
-      toast.success("Habit Purged");
+      toast.success("Habit Deleted");
       fetchData();
     } catch (error) {
       toast.error("Deletion Failed");
@@ -479,14 +511,63 @@ export default function Dashboard({ user, setUser }) {
       <div className="glow-container relative z-10 py-8 px-4 max-w-7xl mx-auto flex-grow w-full">
         {/* HEADER */}
         <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-6">
-          <div className="text-center md:text-left">
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent uppercase tracking-tight">
-              HABIT TRACKER
-            </h1>
-            <p className="text-gray-400 mt-1 font-mono text-xs tracking-widest uppercase opacity-70">
-              {user?.username || user?.email.split("@")[0]} //{" "}
-              {user?.title || "OPERATIVE"}
-            </p>
+          <div className="relative z-30 flex flex-col md:flex-row justify-between items-center gap-6 mb-6">
+            <div className="text-center md:text-left">
+              <h1 className="text-5xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent uppercase tracking-tight">
+                HABIT TRACKER
+              </h1>
+
+              <div className="flex items-center justify-center md:justify-start gap-4 mt-2">
+                {isEditingName ? (
+                  <div className="flex items-center gap-2 bg-[#1a1d2e] border-2 border-cyan-500/50 p-1.5 rounded-xl shadow-[0_0_15px_rgba(6,182,212,0.3)] relative z-40">
+                    <input
+                      autoFocus
+                      type="text"
+                      value={tempName}
+                      onChange={(e) => setTempName(e.target.value)}
+                      onKeyDown={(e) =>
+                        e.key === "Enter" && handleSaveUsername()
+                      }
+                      className="bg-transparent text-white font-mono text-base font-black outline-none px-2 w-40 uppercase"
+                    />
+                    <button
+                      onClick={handleSaveUsername}
+                      className="text-green-400 hover:text-green-300 transition-colors pointer-events-auto cursor-pointer"
+                    >
+                      <Check size={20} />
+                    </button>
+                    <button
+                      onClick={() => setIsEditingName(false)}
+                      className="text-red-400 hover:text-red-300 transition-colors pointer-events-auto cursor-pointer"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <p className="text-white font-mono text-base font-black tracking-[0.2em] uppercase drop-shadow-[0_0_8px_rgba(34,211,238,0.4)]">
+                      {user?.username || user?.email.split("@")[0]}{" "}
+                      <span className="text-cyan-500">//</span>{" "}
+                      {user?.title || "OPERATIVE"}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setTempName(
+                          user?.username || user?.email.split("@")[0]
+                        );
+                        setIsEditingName(true);
+                      }}
+                      className="relative z-50 text-cyan-400 hover:text-cyan-200 transition-all hover:scale-125 cursor-pointer p-2"
+                    >
+                      <Edit3 size={18} className="pointer-events-none" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="flex gap-3 w-full md:w-auto">
@@ -876,27 +957,24 @@ export default function Dashboard({ user, setUser }) {
 
                   <div className="space-y-10 py-8 font-sans">
                     <div className="relative">
-                      <h4 className="text-[10px] font-mono uppercase text-cyan-500/60 tracking-[0.4em] mb-6 flex items-center gap-3">
-                        <span className="h-[1px] w-8 bg-cyan-500/40"></span>{" "}
+                      <h4 className="text-[10px] font-mono uppercase text-cyan-400 tracking-[0.4em] mb-6 flex items-center gap-3">
+                        <span className="h-[1px] w-8 bg-cyan-400 shadow-[0_0_4px_#22d3ee]"></span>{" "}
                         Ranks & Titles
                       </h4>
                       <div className="grid gap-6">
                         {progressionGuide.ranks.map((r, i) => {
                           const isUnlocked = stats.level >= r.lvl;
-                          const nextRank =
-                            progressionGuide.ranks[i + 1]?.lvl || r.lvl + 5;
                           const progressToThis = Math.min(
                             100,
                             Math.max(0, (stats.level / r.lvl) * 100)
                           );
-
                           return (
                             <div
                               key={i}
                               className={`group relative p-5 rounded-2xl border transition-all duration-300 ${
                                 isUnlocked
-                                  ? "bg-cyan-500/5 border-cyan-500/40"
-                                  : "bg-white/5 border-white/10 opacity-60"
+                                  ? "bg-cyan-950/30 border-cyan-400 shadow-[inset_0_0_15px_rgba(34,211,238,0.15)]"
+                                  : "bg-white/10 border-white/20"
                               }`}
                             >
                               <div className="flex justify-between items-start mb-4">
@@ -905,35 +983,34 @@ export default function Dashboard({ user, setUser }) {
                                     <p
                                       className={`font-black uppercase italic tracking-tight text-xl ${
                                         isUnlocked
-                                          ? "text-cyan-400"
+                                          ? "text-cyan-300 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]"
                                           : "text-white"
                                       }`}
                                     >
                                       {r.title}
                                     </p>
                                     {isUnlocked && (
-                                      <Check className="w-4 h-4 text-cyan-400" />
+                                      <Check className="w-5 h-5 text-cyan-300 drop-shadow-[0_0_2px_#22d3ee]" />
                                     )}
                                   </div>
-                                  <p className="text-xs text-gray-500 font-mono italic">
+                                  <p className="text-xs text-gray-300 font-mono italic mt-1">
                                     {r.desc}
                                   </p>
                                 </div>
-                                <span className="text-sm font-black font-mono text-gray-400">
+                                <span className="text-sm font-black font-mono text-cyan-200/80">
                                   REQ: LVL {r.lvl}
                                 </span>
                               </div>
-
                               <div className="space-y-1">
                                 <div className="flex justify-between text-[9px] font-mono uppercase tracking-widest">
-                                  <span className="text-gray-500">
+                                  <span className="text-gray-300">
                                     Sync Status
                                   </span>
                                   <span
                                     className={
                                       isUnlocked
-                                        ? "text-cyan-400"
-                                        : "text-gray-500"
+                                        ? "text-cyan-300"
+                                        : "text-gray-300"
                                     }
                                   >
                                     {isUnlocked
@@ -941,12 +1018,12 @@ export default function Dashboard({ user, setUser }) {
                                       : `${Math.floor(progressToThis)}%`}
                                   </span>
                                 </div>
-                                <div className="h-1.5 w-full bg-black/40 rounded-full overflow-hidden border border-white/5">
+                                <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden border border-white/20">
                                   <div
                                     className={`h-full transition-all duration-1000 ${
                                       isUnlocked
-                                        ? "bg-cyan-500 shadow-[0_0_10px_#06b6d4]"
-                                        : "bg-gray-700"
+                                        ? "bg-cyan-400 shadow-[0_0_12px_#22d3ee]"
+                                        : "bg-gray-500"
                                     }`}
                                     style={{
                                       width: `${
@@ -1010,7 +1087,7 @@ export default function Dashboard({ user, setUser }) {
           </div>
 
           {/* TROPHIES */}
-          <div className="bg-[#1a1d2e]/90 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border-[4px] border-white/5 relative overflow-hidden">
+          <div className="bg-[#2a2438]/95 backdrop-blur-xl rounded-3xl p-8 shadow-2xl shadow-purple-900/20 border-[4px] border-purple-400 shadow-[0_0_15px_#c084fc] relative overflow-hidden">
             <h2 className="text-xl font-bold text-white mb-8 flex items-center gap-3 uppercase tracking-tight">
               <Gift className="text-purple-400 w-6 h-6" /> Progress Trophies
             </h2>

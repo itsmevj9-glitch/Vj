@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 import {
   ArrowLeft,
   Trophy,
@@ -16,10 +17,32 @@ import {
 export default function Evolution({ user }) {
   const navigate = useNavigate();
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [freshStats, setFreshStats] = useState(null);
 
-  const streak = user?.current_streak || 0;
-  const best = user?.longest_streak || 0;
-  const shields = user?.shields || 0;
+  useEffect(() => {
+    const fetchFreshData = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (token) {
+          const response = await axios.get("http://127.0.0.1:8000/api/stats", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          setFreshStats(response.data);
+        }
+      } catch (error) {
+        console.error("Stats refresh failed", error);
+      }
+    };
+    fetchFreshData();
+  }, []);
+
+  const streak = freshStats
+    ? freshStats.current_streak
+    : user?.current_streak || 0;
+  const best = freshStats
+    ? freshStats.longest_streak
+    : user?.longest_streak || 0;
+  const shields = freshStats ? freshStats.shields : user?.shields || 0;
 
   const mountainImg =
     "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=80&w=2000";
@@ -79,7 +102,6 @@ export default function Evolution({ user }) {
 
   return (
     <div className="min-h-screen bg-[#fafafa] text-slate-900 font-sans p-4 md:p-8 pb-12">
-      {/* 1. FULLSCREEN MODAL */}
       {isFullscreen && (
         <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4">
           <button
@@ -103,7 +125,6 @@ export default function Evolution({ user }) {
         </div>
       )}
 
-      {/* 2. HEADER - BIG RECORD */}
       <div className="max-w-[880px] mx-auto w-full flex justify-between items-center mb-6 px-2">
         <button
           onClick={() => navigate("/")}
@@ -124,7 +145,6 @@ export default function Evolution({ user }) {
         </div>
       </div>
 
-      {/* 3. MOTIVATION CARD */}
       <div className="max-w-[880px] mx-auto w-full mb-8">
         <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-100 p-8 relative overflow-hidden group">
           <Quote
@@ -145,7 +165,6 @@ export default function Evolution({ user }) {
         </div>
       </div>
 
-      {/* 4. DASHBOARD GRID (5x4) - REDUCED WIDTH */}
       <div className="max-w-[880px] mx-auto w-full mb-10 px-2">
         <div className="flex justify-between items-end mb-4 px-2">
           <p className="text-[12px] font-black uppercase tracking-widest text-slate-400 font-mono">
@@ -169,21 +188,62 @@ export default function Evolution({ user }) {
         </div>
       </div>
 
-      {/* 5. STATS HUD - RESPONSIVE COLORS & FIRE EFFECT */}
       <div className="max-w-[880px] mx-auto w-full grid grid-cols-1 md:grid-cols-3 gap-6 px-2">
-        {/* Streak Card - Burning Flame Effect */}
-        <div className="relative bg-white p-8 rounded-[2.5rem] shadow-lg border border-slate-100 text-center overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-t from-orange-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <Flame className="w-8 h-8 text-orange-600 mx-auto mb-2 animate-pulse" />
-          <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
-            Active Streak
-          </p>
-          <p className="text-4xl font-black italic text-orange-600 drop-shadow-sm">
-            {streak} Days
-          </p>
-        </div>
+        {(() => {
+          let flameColor = "text-slate-400";
+          let bgColor = "bg-white";
+          let shadow = "shadow-lg";
+          let fireAnimation = "";
+          let intensityText = "Spark";
 
-        {/* Shield Card - Full Card Color Shift */}
+          if (streak >= 15) {
+            flameColor = "text-cyan-400";
+            bgColor = "bg-slate-900 border-cyan-500/50";
+            shadow = "shadow-[0_0_40px_rgba(34,211,238,0.6)]";
+            fireAnimation =
+              "animate-pulse drop-shadow-[0_0_15px_rgba(34,211,238,0.8)]";
+            intensityText = "PLASMA INFERNO";
+          } else if (streak >= 7) {
+            flameColor = "text-red-600";
+            bgColor = "bg-red-50 border-red-200";
+            shadow = "shadow-[0_0_30px_rgba(220,38,38,0.4)]";
+            fireAnimation =
+              "animate-bounce drop-shadow-[0_0_10px_rgba(220,38,38,0.6)]";
+            intensityText = "RAGING BLAZE";
+          } else if (streak >= 3) {
+            flameColor = "text-orange-500";
+            bgColor = "bg-orange-50/50 border-orange-100";
+            shadow = "shadow-orange-200/50";
+            fireAnimation = "animate-pulse";
+            intensityText = "BURNING";
+          }
+
+          return (
+            <div
+              className={`relative p-8 rounded-[2.5rem] border text-center overflow-hidden transition-all duration-700 group ${bgColor} ${shadow}`}
+            >
+              <div
+                className={`absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity bg-gradient-to-t from-current to-transparent ${flameColor}`}
+              />
+              <Flame
+                className={`w-10 h-10 mx-auto mb-2 transition-all duration-500 ${flameColor} ${fireAnimation}`}
+              />
+              <p
+                className={`text-[10px] font-black uppercase tracking-widest ${
+                  streak >= 15 ? "text-cyan-200" : "text-slate-400"
+                }`}
+              >
+                {intensityText}
+              </p>
+              <p
+                className={`text-4xl font-black italic drop-shadow-sm ${flameColor}`}
+              >
+                {streak} Days
+              </p>
+            </div>
+          );
+        })()}
+
         <div
           className={`p-8 rounded-[2.5rem] shadow-lg border text-center transition-all duration-700 flex flex-col items-center justify-center
           ${
@@ -201,7 +261,6 @@ export default function Evolution({ user }) {
           </p>
         </div>
 
-        {/* Integrity Card */}
         <div className="bg-white p-8 rounded-[2.5rem] shadow-lg border border-slate-100 text-center flex flex-col justify-center items-center">
           <AlertTriangle className="w-8 h-8 text-blue-600 mb-2" />
           <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">
