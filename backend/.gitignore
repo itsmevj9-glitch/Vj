@@ -1,2 +1,7 @@
 __pychache__/
 *.pyc
+
+
+# Secrets
+serviceAccountKey.json
+.env
