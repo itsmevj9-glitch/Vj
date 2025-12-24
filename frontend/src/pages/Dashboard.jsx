@@ -40,6 +40,12 @@ import {
   UserCircle,
   Info,
   Terminal,
+  CalendarDays,
+  ChevronDown,
+  Menu,
+  X,
+  Minus,
+  ShieldCheck,
 } from "lucide-react";
 
 // --- IMPORT FIREBASE LOGIC ---
@@ -55,13 +61,35 @@ export default function Dashboard({ user, setUser }) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [intelOpen, setIntelOpen] = useState(false);
   const [completedToday, setCompletedToday] = useState(new Set());
+  const [weeklyCompletions, setWeeklyCompletions] = useState([]);
   const [newUsername, setNewUsername] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Updated state for day selection
+  const [showDayPicker, setShowDayPicker] = useState(false);
   const [habitForm, setHabitForm] = useState({
     name: "",
     description: "",
     frequency: "daily",
     notification_time: "",
   });
+
+  const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  const toggleDay = (day) => {
+    let currentDays =
+      habitForm.frequency === "daily" ? [] : habitForm.frequency.split(",");
+    if (currentDays.includes(day)) {
+      currentDays = currentDays.filter((d) => d !== day);
+    } else {
+      currentDays.push(day);
+    }
+
+    const newFrequency =
+      currentDays.length === 0 ? "daily" : currentDays.join(",");
+    setHabitForm({ ...habitForm, frequency: newFrequency });
+  };
+
   const navigate = useNavigate();
 
   // --- NEURAL LINK: CONNECTS BROWSER TO PYTHON SERVER ---
@@ -77,7 +105,6 @@ export default function Dashboard({ user, setUser }) {
       const permission = await Notification.requestPermission();
 
       if (permission === "granted") {
-        // 1. Audio Engine Test (Unlocks browser audio policy)
         const testAudio = new Audio(
           "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
         );
@@ -88,11 +115,9 @@ export default function Dashboard({ user, setUser }) {
 
         toast.info("ESTABLISHING LINK...", { duration: 2000 });
 
-        // 2. Get the unique Device ID (Token) from Firebase
         const currentToken = await requestForToken();
 
         if (currentToken) {
-          // 3. Transmit Token to Python Backend
           await axios.post(
             `${API}/auth/fcm-token`,
             { token: currentToken },
@@ -119,6 +144,33 @@ export default function Dashboard({ user, setUser }) {
       console.error("Link Error:", error);
       toast.error("CONNECTION REFUSED", {
         description: "Server handshake failed.",
+      });
+    }
+  };
+
+  const handleBuyShield = async () => {
+    try {
+      const res = await axios.post(
+        `${API}/shop/buy-shield`,
+        {},
+        getAuthHeader()
+      );
+
+      // Update local user state with new XP and Shield count
+      setUser({
+        ...user,
+        xp: res.data.new_xp,
+        shields: res.data.shields,
+        level: Math.floor(res.data.new_xp / 100) + 1, // Recalculate level locally
+      });
+
+      toast.success("SHIELD SECURED", {
+        description: "Your streak is now protected from one missed day.",
+        icon: <ShieldCheck className="text-green-400" />,
+      });
+    } catch (error) {
+      toast.error("PURCHASE FAILED", {
+        description: error.response?.data?.detail || "Insufficient XP.",
       });
     }
   };
@@ -170,14 +222,17 @@ export default function Dashboard({ user, setUser }) {
 
   const fetchData = async () => {
     try {
-      const [statsRes, habitsRes, completionsRes] = await Promise.all([
-        axios.get(`${API}/stats`, getAuthHeader()),
-        axios.get(`${API}/habits`, getAuthHeader()),
-        axios.get(`${API}/habits/completions/today`, getAuthHeader()),
-      ]);
+      const [statsRes, habitsRes, completionsRes, weeklyRes] =
+        await Promise.all([
+          axios.get(`${API}/stats`, getAuthHeader()),
+          axios.get(`${API}/habits`, getAuthHeader()),
+          axios.get(`${API}/habits/completions/today`, getAuthHeader()),
+          axios.get(`${API}/habits/completions/weekly`, getAuthHeader()), // Add this
+        ]);
       setStats(statsRes.data);
       setHabits(habitsRes.data);
       setCompletedToday(new Set(completionsRes.data.map((c) => c.habit_id)));
+      setWeeklyCompletions(weeklyRes.data); // Add this
     } catch (error) {
       toast.error("Failed to load data");
     } finally {
@@ -234,6 +289,7 @@ export default function Dashboard({ user, setUser }) {
       if (response.data.new_level > stats.level)
         toast.success(`LEVEL UP: Rank ${response.data.new_level}`);
       fetchData();
+
       const updatedUser = {
         ...user,
         xp: response.data.new_xp,
@@ -267,6 +323,7 @@ export default function Dashboard({ user, setUser }) {
         frequency: "daily",
         notification_time: "",
       });
+      setShowDayPicker(false);
       setCreateDialogOpen(false);
       fetchData();
     } catch (error) {
@@ -300,6 +357,7 @@ export default function Dashboard({ user, setUser }) {
     <div className="min-h-screen bg-gradient-to-b from-[#0a0e27] via-[#1a1d2e] to-[#0a0e27] relative overflow-hidden flex flex-col font-sans">
       <NotificationManager habits={habits} />
 
+      {/* BACKGROUND ELEMENTS (Keep your existing background code here) */}
       <div
         className="fixed inset-0 z-0 pointer-events-none opacity-[0.03]"
         style={{
@@ -311,6 +369,113 @@ export default function Dashboard({ user, setUser }) {
       <div className="bg-shape bg-shape-2"></div>
       <div className="bg-shape bg-shape-3"></div>
 
+      {/* SIDE MENU OVERLAY */}
+      <div
+        className={`fixed inset-0 z-[100] transition-visibility duration-300 ${
+          menuOpen ? "visible" : "invisible"
+        }`}
+      >
+        {/* Backdrop blur effect */}
+        <div
+          className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
+            menuOpen ? "opacity-100" : "opacity-0"
+          }`}
+          onClick={() => setMenuOpen(false)}
+        ></div>
+
+        {/* The Sliding Panel */}
+        <div
+          className={`absolute right-0 top-0 w-80 h-full bg-[#0a0e27] border-l border-cyan-500/30 p-8 flex flex-col gap-6 shadow-[[-20px_0_50px_rgba(6,182,212,0.15)]] transition-transform duration-500 ease-out transform ${
+            menuOpen ? "translate-x-0" : "translate-x-full"
+          }`}
+        >
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-xl font-black text-white italic tracking-tighter uppercase">
+                System
+              </h2>
+              <h2 className="text-xl font-black text-cyan-400 italic tracking-tighter uppercase mt-[-8px]">
+                Menu
+              </h2>
+            </div>
+            <button
+              onClick={() => setMenuOpen(false)}
+              className="p-2 bg-white/5 rounded-full text-gray-500 hover:text-white transition"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+
+          {/* Evolution Button */}
+          <button
+            onClick={() => {
+              navigate("/evolution");
+              setMenuOpen(false);
+            }}
+            className="flex items-center gap-4 p-4 rounded-2xl bg-purple-600/10 border border-purple-500/30 text-purple-400 hover:bg-purple-600/20 transition-all hover:scale-[1.02] group"
+          >
+            <div className="p-3 bg-purple-500/20 rounded-xl group-hover:bg-purple-500/30">
+              <Zap className="w-6 h-6 group-hover:animate-pulse" />
+            </div>
+            <div className="text-left">
+              <span className="block font-black uppercase tracking-widest text-xs">
+                Identity
+              </span>
+              <span className="block text-sm font-bold text-white">
+                Evolution
+              </span>
+            </div>
+          </button>
+
+          {/* Leaderboard Button */}
+          <button
+            onClick={() => {
+              navigate("/leaderboard");
+              setMenuOpen(false);
+            }}
+            className="flex items-center gap-4 p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 transition-all hover:scale-[1.02] group"
+          >
+            <div className="p-3 bg-cyan-500/20 rounded-xl group-hover:bg-cyan-500/30">
+              <Crown className="w-6 h-6" />
+            </div>
+            <div className="text-left">
+              <span className="block font-black uppercase tracking-widest text-xs">
+                Global
+              </span>
+              <span className="block text-sm font-bold text-white">
+                Leaderboard
+              </span>
+            </div>
+          </button>
+
+          {/* Shield Shop Button */}
+          <button
+            onClick={() => {
+              handleBuyShield();
+            }}
+            className="flex items-center gap-4 p-4 rounded-2xl bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 transition-all hover:scale-[1.02] group"
+          >
+            <div className="p-3 bg-green-500/20 rounded-xl group-hover:bg-green-500/30">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div className="text-left">
+              <span className="block font-black uppercase tracking-widest text-xs">
+                Shield Shop
+              </span>
+              <span className="block text-[10px] opacity-60 font-mono text-white">
+                {user.shields || 0} Owned // 200 XP
+              </span>
+            </div>
+          </button>
+
+          <div className="mt-auto pt-8 border-t border-white/5 text-center">
+            <p className="text-[10px] text-gray-600 font-mono">
+              OPERATIVE STATUS: ACTIVE
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="glow-container relative z-10 py-8 px-4 max-w-7xl mx-auto flex-grow w-full">
         {/* HEADER */}
         <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-6">
@@ -319,74 +484,37 @@ export default function Dashboard({ user, setUser }) {
               HABIT TRACKER
             </h1>
             <p className="text-gray-400 mt-1 font-mono text-xs tracking-widest uppercase opacity-70">
-              {user?.username || user?.email.split("@")[0]} // Operative
+              {user?.username || user?.email.split("@")[0]} //{" "}
+              {user?.title || "OPERATIVE"}
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 w-full md:w-auto md:flex">
+          <div className="flex gap-3 w-full md:w-auto">
+            {/* Main Menu Button */}
             <button
-              onClick={handleEnableAlerts}
-              className={`flex items-center justify-center gap-2 px-4 py-2 rounded-xl border transition-all shadow-[0_0_15px_rgba(6,182,212,0.2)] group w-full md:w-auto ${
-                Notification.permission === "granted"
-                  ? "bg-green-500/10 text-green-400 border-green-500/30 hover:bg-green-500/20"
-                  : "bg-cyan-500/10 text-cyan-400 border-cyan-500/30 hover:bg-cyan-500 hover:text-white"
-              }`}
+              onClick={() => setMenuOpen(true)}
+              className="flex flex-1 md:flex-none items-center justify-center gap-2 px-6 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-700 text-white shadow-lg shadow-cyan-500/20 hover:scale-105 transition-all border border-cyan-400/30"
             >
-              <Bell
-                className={`w-4 h-4 ${
-                  Notification.permission !== "granted" ? "animate-bounce" : ""
-                }`}
-              />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] hidden sm:block">
-                {Notification.permission === "granted"
-                  ? "System Linked"
-                  : "Link System"}
+              <Menu className="w-5 h-5" />
+              <span className="text-xs font-black uppercase tracking-widest">
+                Open Menu
               </span>
             </button>
 
-            {!isIdentityClaimed && (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <button className="flex items-center justify-center p-2 bg-cyan-500/20 text-cyan-400 rounded-xl hover:bg-cyan-500/40 transition border border-cyan-500/30 relative shadow-[0_0_10px_rgba(6,182,212,0.3)] w-full md:w-auto">
-                    <UserCircle className="w-6 h-6" />
-                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#0a0e27] animate-pulse"></span>
-                  </button>
-                </DialogTrigger>
-                <DialogContent className="bg-[#1a1d2e] border-cyan-500/30 text-white">
-                  <DialogHeader>
-                    <DialogTitle>Claim Identity</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 pt-4">
-                    <Input
-                      placeholder="Handle..."
-                      className="bg-[#0a0e27] border-gray-700 text-white"
-                      value={newUsername}
-                      onChange={(e) => setNewUsername(e.target.value)}
-                    />
-                    <Button
-                      onClick={handleUpdateUsername}
-                      className="w-full bg-cyan-600"
-                    >
-                      Verify Identity
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            )}
-
             <button
-              onClick={() => navigate("/leaderboard")}
-              className="group relative flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-600 hover:scale-105 transition shadow-lg shadow-purple-500/40 w-full md:w-auto"
+              onClick={handleEnableAlerts}
+              className={`flex items-center justify-center p-2 rounded-xl border transition-all ${
+                Notification.permission === "granted"
+                  ? "bg-green-500/10 text-green-400 border-green-500/30"
+                  : "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
+              }`}
             >
-              <Crown className="w-5 h-5 text-white" />
-              <span className="text-white font-medium hidden sm:block">
-                Leaderboard
-              </span>
+              <Bell className="w-5 h-5" />
             </button>
 
             <Button
               onClick={handleLogout}
-              className="bg-red-600/20 text-red-500 border border-red-500/40 hover:bg-red-600 hover:text-white rounded-xl px-4 py-2 transition-all w-full md:w-auto flex justify-center"
+              className="bg-red-600/20 text-red-500 border border-red-500/40 hover:bg-red-600 hover:text-white rounded-xl px-4 py-2 flex justify-center"
             >
               <LogOut className="w-5 h-5" />
             </Button>
@@ -436,11 +564,11 @@ export default function Dashboard({ user, setUser }) {
               </div>
             </div>
           </div>
-          <div className="bg-[#1a1d2e]/80 border-2 border-white/10 rounded-2xl p-6 flex flex-col justify-center">
-            <p className="text-[10px] uppercase font-bold text-gray-500 tracking-widest mb-1 flex items-center gap-2">
+          <div className="bg-[#FFFDD0] border-2 border-white/10 rounded-2xl p-6 flex flex-col justify-center shadow-lg">
+            <p className="text-[10px] uppercase font-bold text-slate-500 tracking-widest mb-1 flex items-center gap-2">
               <Zap className="w-3 h-3 text-yellow-500" /> Daily Insight
             </p>
-            <p className="text-xs italic text-gray-200 leading-relaxed font-serif">
+            <p className="text-xs italic text-slate-800 leading-relaxed font-serif font-medium">
               "{dailyQuote}"
             </p>
           </div>
@@ -537,11 +665,11 @@ export default function Dashboard({ user, setUser }) {
                   <Plus className="w-5 h-5 mr-2" /> New Habit
                 </Button>
               </DialogTrigger>
-              <DialogContent className="bg-[#1a1d2e] border-gray-700 text-white">
+              <DialogContent className="bg-[#1a1d2e] border-cyan-500/30 text-white">
                 <DialogHeader>
                   <DialogTitle>Habit Configuration</DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleCreateHabit} className="space-y-4 pt-4">
+                <form onSubmit={handleCreateHabit} className="space-y-6 pt-4">
                   <Input
                     placeholder="Habit Name"
                     className="bg-[#0a0e27] border-gray-700 text-white"
@@ -562,34 +690,84 @@ export default function Dashboard({ user, setUser }) {
                       })
                     }
                   />
-                  <select
-                    className="w-full bg-[#0a0e27] border border-gray-800 rounded-md p-2 text-white"
-                    value={habitForm.frequency}
-                    onChange={(e) =>
-                      setHabitForm({ ...habitForm, frequency: e.target.value })
-                    }
+
+                  {/* Day Selection Bar */}
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowDayPicker(!showDayPicker)}
+                      className="w-full flex items-center justify-between p-3 bg-[#0a0e27] border border-gray-700 rounded-xl hover:border-cyan-500/50 transition-all group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <CalendarDays className="w-4 h-4 text-cyan-400" />
+                        <span className="text-xs uppercase font-black tracking-widest">
+                          Frequency:{" "}
+                          {habitForm.frequency === "daily"
+                            ? "Every Day"
+                            : habitForm.frequency}
+                        </span>
+                      </div>
+                      <ChevronDown
+                        className={`w-4 h-4 text-gray-500 transition-transform ${
+                          showDayPicker ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+
+                    {showDayPicker && (
+                      <div className="flex gap-1 p-1 bg-[#0a0e27] border border-gray-800 rounded-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                        {weekDays.map((day) => {
+                          const isSelected =
+                            habitForm.frequency === "daily" ||
+                            habitForm.frequency.split(",").includes(day);
+                          return (
+                            <button
+                              key={day}
+                              type="button"
+                              onClick={() => toggleDay(day)}
+                              className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${
+                                isSelected
+                                  ? "bg-cyan-500 text-white shadow-[0_0_10px_rgba(6,182,212,0.5)]"
+                                  : "text-gray-500 hover:bg-gray-800"
+                              }`}
+                            >
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Notification Time with Label */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase font-black text-gray-500 tracking-[0.2em] ml-1">
+                      Set Mission Time
+                    </label>
+                    <Input
+                      type="time"
+                      className="bg-[#0a0e27] border-gray-700 text-white"
+                      value={habitForm.notification_time}
+                      onChange={(e) =>
+                        setHabitForm({
+                          ...habitForm,
+                          notification_time: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full bg-cyan-600 shadow-[0_0_15px_rgba(6,182,212,0.4)]"
                   >
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                  </select>
-                  <Input
-                    type="time"
-                    className="bg-[#0a0e27] border-gray-700 text-white"
-                    value={habitForm.notification_time}
-                    onChange={(e) =>
-                      setHabitForm({
-                        ...habitForm,
-                        notification_time: e.target.value,
-                      })
-                    }
-                  />
-                  <Button type="submit" className="w-full bg-cyan-600">
                     Start Mission
                   </Button>
                 </form>
               </DialogContent>
             </Dialog>
           </div>
+
           <div className="space-y-6">
             {habits.map((habit) => (
               <div
@@ -600,15 +778,22 @@ export default function Dashboard({ user, setUser }) {
                   <h3 className="text-lg font-bold text-white group-hover:text-cyan-400 transition uppercase italic">
                     {habit.name}
                   </h3>
-                  {habit.notification_time && (
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Bell className="w-3 h-3 text-cyan-500/40" />
-                      <span className="text-sm text-cyan-500/60 font-mono italic tracking-tight">
-                        {habit.notification_time.slice(0, 5)}
-                      </span>
-                      <span className="text-gray-800/40 mx-1">|</span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 mt-1">
+                    {habit.notification_time && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Bell className="w-3 h-3 text-cyan-500/40" />
+                        <span className="text-sm text-cyan-500/60 font-mono italic tracking-tight">
+                          {habit.notification_time.slice(0, 5)}
+                        </span>
+                        <span className="text-gray-800/40 mx-1">|</span>
+                        <span className="text-[10px] text-gray-500 uppercase font-bold tracking-tighter">
+                          {habit.frequency === "daily"
+                            ? "Daily"
+                            : habit.frequency}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                   <div className="mt-1 flex items-center gap-2">
                     <input
                       type="text"
@@ -690,7 +875,6 @@ export default function Dashboard({ user, setUser }) {
                   </DialogHeader>
 
                   <div className="space-y-10 py-8 font-sans">
-                    {/* RANKS SECTION */}
                     <div className="relative">
                       <h4 className="text-[10px] font-mono uppercase text-cyan-500/60 tracking-[0.4em] mb-6 flex items-center gap-3">
                         <span className="h-[1px] w-8 bg-cyan-500/40"></span>{" "}
@@ -740,7 +924,6 @@ export default function Dashboard({ user, setUser }) {
                                 </span>
                               </div>
 
-                              {/* Individual Rank Progress Bar */}
                               <div className="space-y-1">
                                 <div className="flex justify-between text-[9px] font-mono uppercase tracking-widest">
                                   <span className="text-gray-500">
@@ -776,31 +959,6 @@ export default function Dashboard({ user, setUser }) {
                             </div>
                           );
                         })}
-                      </div>
-                    </div>
-
-                    {/* TAGS SECTION */}
-                    <div>
-                      <h4 className="text-[10px] font-mono uppercase text-purple-500/60 tracking-[0.4em] mb-6 flex items-center gap-3">
-                        <span className="h-[1px] w-8 bg-purple-500/40"></span>{" "}
-                        Neural Tag Clearances
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {progressionGuide.tags.map((t, i) => (
-                          <div
-                            key={i}
-                            className="flex justify-between items-center p-4 bg-[#1a1d2e] rounded-xl border border-white/5 shadow-inner hover:border-purple-500/30 transition-colors"
-                          >
-                            <span
-                              className={`text-xs font-black uppercase tracking-widest ${t.color}`}
-                            >
-                              {t.name}
-                            </span>
-                            <span className="px-3 py-1 bg-white/5 rounded-md text-[9px] font-mono text-gray-500 border border-white/5">
-                              {t.req}
-                            </span>
-                          </div>
-                        ))}
                       </div>
                     </div>
                   </div>
@@ -911,12 +1069,84 @@ export default function Dashboard({ user, setUser }) {
             </div>
           </div>
         </div>
+        {/* WEEKLY MISSION PROGRESS CALENDAR */}
+        <div className="bg-[#1a1d2e]/80 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-gray-800 mb-20 overflow-hidden">
+          <h2 className="text-xl font-bold text-white uppercase italic tracking-tighter mb-6 flex items-center gap-2">
+            <CalendarDays className="w-5 h-5 text-cyan-400" /> Weekly Mission
+            Status
+          </h2>
+          <div className="bg-[#fdfcf0]/10 backdrop-blur-md rounded-2xl p-6 overflow-x-auto border-4 border-cyan-500/20 shadow-inner">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b-2 border-slate-300">
+                  <th className="pb-4 text-xs uppercase font-black text-white-500 px-4">
+                    Quest
+                  </th>
+                  {weekDays.map((day) => (
+                    <th
+                      key={day}
+                      className="pb-4 text-xs uppercase font-black text-center text-white-500"
+                    >
+                      {day}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {habits.map((habit) => (
+                  <tr
+                    key={habit.id}
+                    className="border-b border-slate-200 hover:bg-slate-200/50 transition-colors"
+                  >
+                    <td className="py-5 px-4">
+                      <span className="text-sm font-black text-white-700 uppercase">
+                        {habit.name}
+                      </span>
+                    </td>
+                    {weekDays.map((dayName, index) => {
+                      // Identify if habit is active on this day
+                      const isScheduled =
+                        habit.frequency === "daily" ||
+                        habit.frequency.includes(dayName);
+
+                      // Find completion in the data
+                      const hasCompleted = weeklyCompletions.some((comp) => {
+                        const compDate = new Date(comp.completed_at);
+                        const compDayName =
+                          weekDays[(compDate.getUTCDay() + 6) % 7];
+                        return (
+                          comp.habit_id === habit.id && compDayName === dayName
+                        );
+                      });
+
+                      // Check if the day is in the past
+                      const todayIndex = (new Date().getUTCDay() + 6) % 7;
+                      const isPastDay = index <= todayIndex;
+
+                      return (
+                        <td key={dayName} className="py-5 text-center">
+                          {hasCompleted ? (
+                            <div className="bg-green-100 p-1.5 rounded-full inline-block border-2 border-green-500 shadow-sm">
+                              <Check className="w-4 h-4 text-green-600 font-black" />
+                            </div>
+                          ) : isScheduled && isPastDay ? (
+                            <X className="w-5 h-5 text-red-500 mx-auto" />
+                          ) : (
+                            <Minus className="w-4 h-4 text-slate-300 mx-auto" />
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
-      {/* UPDATED FOOTER SECTION */}
       <footer className="relative z-20 mt-auto bg-[#050816] border-t-2 border-cyan-500/50 py-12 px-8">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
-          {/* LEFT: Branding */}
           <div className="text-center md:text-left">
             <h3 className="text-cyan-400 font-black italic tracking-tighter text-xl uppercase mb-2">
               HABIT TRACKER
@@ -925,16 +1155,12 @@ export default function Dashboard({ user, setUser }) {
               Authorized Monitor // v2.5
             </p>
           </div>
-
-          {/* CENTER: Copyright (Moved to middle for balance) */}
           <div className="text-[10px] text-white-600 font-mono italic order-3 md:order-2">
             © 2025 // SECURED CONNECTION
           </div>
-
-          {/* RIGHT: Support Section */}
           <div className="flex flex-col items-center md:items-end gap-1 order-2 md:order-3">
             <a
-              href="https://mail.google.com/mail/?view=cm&fs=1&to="
+              href="https://mail.google.com/mail/?view=cm&fs=1&to=admin@admin.com"
               target="_blank"
               rel="noopener noreferrer"
               className="text-white-400 hover:text-purple-400 text-[10px] uppercase font-black tracking-[0.2em] transition cursor-pointer flex items-center gap-2"

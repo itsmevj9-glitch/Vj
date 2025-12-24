@@ -27,60 +27,65 @@ export default function Leaderboard() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#0a0e27] text-white relative overflow-hidden font-sans">
-      {/* Cyberpunk Background Grid */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f2937_1px,transparent_1px),linear-gradient(to_bottom,#1f2937_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-20"></div>
+    <div className="min-h-screen bg-[#0a0e27] text-white relative overflow-hidden font-sans selection:bg-cyan-500/30">
+      {/* 1. NEW: Ambient Top Spotlight (Glow Effect) */}
+      <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-cyan-500/20 blur-[120px] rounded-full pointer-events-none mix-blend-screen"></div>
+
+      {/* Cyberpunk Background Grid (Slightly brighter) */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f2937_1px,transparent_1px),linear-gradient(to_bottom,#1f2937_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_80%_60%_at_50%_0%,#000_70%,transparent_100%)] opacity-30"></div>
 
       <div className="relative z-10 max-w-4xl mx-auto py-12 px-6">
         <Button
           variant="ghost"
           onClick={() => navigate(-1)}
-          className="mb-8 hover:bg-cyan-500/10 text-cyan-400 gap-2"
+          className="mb-8 hover:bg-cyan-500/10 text-cyan-400 gap-2 border border-transparent hover:border-cyan-500/30 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all"
         >
           <ChevronLeft className="w-4 h-4" /> Back to Base
         </Button>
 
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-black italic tracking-tighter bg-gradient-to-b from-white to-gray-500 bg-clip-text text-transparent uppercase">
+        <div className="text-center mb-12 relative">
+          {/* 2. UPGRADE: Title Glow */}
+          <h1 className="text-5xl font-black italic tracking-tighter bg-gradient-to-b from-white via-gray-200 to-gray-500 bg-clip-text text-transparent uppercase drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">
             Global Rankings
           </h1>
-          <p className="text-cyan-500 font-mono text-sm mt-2 tracking-widest uppercase">
+          <p className="text-cyan-400 font-mono text-sm mt-2 tracking-widest uppercase drop-shadow-[0_0_8px_rgba(34,211,238,0.6)]">
             Top Level 10 Operatives Only
           </p>
         </div>
 
         {loading ? (
           <div className="flex justify-center py-20">
-            <div className="spinner"></div>
+            <div className="spinner border-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.5)]"></div>
           </div>
         ) : (
           <div className="space-y-4">
             {leaders.map((player, index) => (
               <div
                 key={index}
-                className={`relative flex items-center justify-between p-5 rounded-2xl border transition-all duration-500 group
+                // 3. UPGRADE: Enhanced Borders and Shadows for Cards
+                className={`relative flex items-center justify-between p-5 rounded-2xl border transition-all duration-500 group backdrop-blur-sm
                   ${
                     index === 0
-                      ? "bg-gradient-to-r from-yellow-500/20 to-transparent border-yellow-500/50 shadow-[0_0_20px_rgba(234,179,8,0.1)]"
+                      ? "bg-gradient-to-r from-yellow-500/10 to-transparent border-yellow-500/60 shadow-[0_0_35px_-5px_rgba(234,179,8,0.3)] hover:shadow-[0_0_50px_-5px_rgba(234,179,8,0.5)]"
                       : index === 1
-                      ? "bg-gradient-to-r from-slate-400/10 to-transparent border-slate-400/30"
+                      ? "bg-gradient-to-r from-slate-400/10 to-transparent border-slate-400/40 shadow-[0_0_25px_-5px_rgba(148,163,184,0.2)]"
                       : index === 2
-                      ? "bg-gradient-to-r from-orange-700/10 to-transparent border-orange-700/30"
-                      : "bg-[#1a1d2e]/40 border-gray-800 hover:border-cyan-500/50"
+                      ? "bg-gradient-to-r from-orange-700/10 to-transparent border-orange-700/40 shadow-[0_0_25px_-5px_rgba(194,65,12,0.2)]"
+                      : "bg-[#1a1d2e]/40 border-gray-800 hover:border-cyan-500/50 hover:shadow-[0_0_20px_-5px_rgba(6,182,212,0.2)]"
                   }`}
               >
                 <div className="flex items-center gap-6">
-                  {/* Rank Badge */}
+                  {/* Rank Badge - Increased Glow */}
                   <div
-                    className={`w-10 h-10 rounded-lg flex items-center justify-center font-black italic text-xl
+                    className={`w-10 h-10 rounded-lg flex items-center justify-center font-black italic text-xl shadow-lg
                     ${
                       index === 0
-                        ? "bg-yellow-500 text-black shadow-[0_0_15px_#eab308]"
+                        ? "bg-yellow-500 text-black shadow-[0_0_20px_#eab308] ring-2 ring-yellow-400/50"
                         : index === 1
-                        ? "bg-slate-400 text-black"
+                        ? "bg-slate-300 text-black shadow-[0_0_15px_#94a3b8]"
                         : index === 2
-                        ? "bg-orange-700 text-black"
-                        : "text-gray-500"
+                        ? "bg-orange-600 text-black shadow-[0_0_15px_#c2410c]"
+                        : "text-gray-500 bg-gray-800/50"
                     }`}
                   >
                     {index + 1}
@@ -89,25 +94,39 @@ export default function Leaderboard() {
                   {/* Player Info */}
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="text-xl font-bold tracking-tight group-hover:text-cyan-400 transition-colors">
+                      <h3
+                        className={`text-xl font-bold tracking-tight transition-colors ${
+                          index === 0
+                            ? "text-yellow-100 drop-shadow-[0_0_5px_rgba(250,204,21,0.5)]"
+                            : "group-hover:text-cyan-400"
+                        }`}
+                      >
                         {player.username}
                       </h3>
                       {index === 0 && (
-                        <Crown className="w-5 h-5 text-yellow-500 animate-pulse" />
+                        <Crown className="w-5 h-5 text-yellow-400 fill-yellow-400 animate-pulse drop-shadow-[0_0_10px_rgba(250,204,21,0.8)]" />
                       )}
                     </div>
                     <div className="flex gap-4 text-[10px] font-mono uppercase tracking-widest text-gray-500">
                       <span>Level {player.level}</span>
-                      <span className="text-cyan-600">Verified operative</span>
+                      <span className="text-cyan-600 drop-shadow-[0_0_3px_rgba(8,145,178,0.5)]">
+                        Verified operative
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                {/* XP Visualizer */}
+                {/* XP Visualizer - Neon Text Effect */}
                 <div className="text-right">
                   <div className="flex items-center gap-2 justify-end">
-                    <Zap className="w-4 h-4 text-cyan-400 fill-cyan-400" />
-                    <span className="text-2xl font-black italic text-white">
+                    <Zap
+                      className={`w-4 h-4 ${
+                        index === 0
+                          ? "text-yellow-400 fill-yellow-400"
+                          : "text-cyan-400 fill-cyan-400"
+                      } drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]`}
+                    />
+                    <span className="text-2xl font-black italic text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.4)]">
                       {player.xp}
                     </span>
                   </div>
@@ -116,15 +135,15 @@ export default function Leaderboard() {
                   </p>
                 </div>
 
-                {/* Decorative scanning line */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-cyan-500/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                {/* Decorative scanning line (Brighter) */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-cyan-400/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
               </div>
             ))}
           </div>
         )}
 
         {/* Footer Design */}
-        <div className="mt-16 p-8 border border-dashed border-gray-800 rounded-3xl text-center">
+        <div className="mt-16 p-8 border border-dashed border-gray-800 rounded-3xl text-center hover:border-gray-700 transition-colors">
           <Target className="w-12 h-12 text-gray-700 mx-auto mb-4" />
           <p className="text-gray-500 text-sm max-w-xs mx-auto italic">
             "Discipline is the master key to your potential."

@@ -3,8 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import AuthPage from "./pages/AuthPage";
 import Dashboard from "./pages/Dashboard";
 import AdminPanel from "./pages/AdminPanel";
-import LogsPage from "./pages/LogsPage"; 
+import LogsPage from "./pages/LogsPage";
 import Leaderboard from "./pages/Leaderboard";
+import Evolution from "./pages/Evolution";
 import { Toaster } from "./components/ui/sonner";
 
 import "./App.css";
@@ -82,6 +83,12 @@ function App() {
               />
             }
           />
+          <Route
+            path="/"
+            element={<Dashboard user={user} setUser={setUser} />}
+          />
+          <Route path="/evolution" element={<Evolution user={user} />} />
+          
         </Routes>
       </BrowserRouter>
       <Toaster position="top-right" />

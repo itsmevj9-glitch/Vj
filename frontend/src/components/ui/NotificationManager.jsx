@@ -18,9 +18,7 @@ export default function NotificationManager({ habits }) {
     if (localStorage.getItem("notifications_disabled") === "true") return;
     audio.currentTime = 0;
     audio.volume = 0.4;
-    audio
-      .play()
-      .catch(() => console.warn("Audio blocked (User interaction needed)"));
+    audio.play().catch(() => console.warn("Audio blocked"));
   }, []);
 
   const triggerAlert = useCallback(
@@ -31,23 +29,15 @@ export default function NotificationManager({ habits }) {
       // 2. Play Sound
       triggerSound();
 
-      // 3. Browser Notification (If in background)
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(title, {
-          body: body,
-          icon: "/favicon.ico",
-        });
-      }
+      // 🛑 I DELETED THE "new Notification()" BLOCK HERE.
+      // This ensures only ONE system banner appears (via Chrome).
 
-      // 4. In-App Toast (If in foreground)
+      // 3. In-App Toast (Visual popup inside the website ONLY)
       toast.info(title, {
         description: (
           <div className="flex flex-col gap-1">
             <p className="font-bold text-cyan-400 uppercase tracking-tighter">
               {body}
-            </p>
-            <p className="text-[10px] italic text-gray-400">
-              "Victory belongs to the most persevering."
             </p>
           </div>
         ),
@@ -61,36 +51,19 @@ export default function NotificationManager({ habits }) {
   );
 
   useEffect(() => {
-    // -----------------------------------------------------------
-    // ❌ REMOVED: The Local 'checkSchedule' & 'setInterval'
-    // We no longer guess the time here. We trust the Backend.
-    // -----------------------------------------------------------
-
-    // ✅ FIREBASE LISTENER (The only source of truth)
-    // This wakes up ONLY when the Python backend sends a message.
+    // ✅ FIREBASE LISTENER
     onMessageListener()
       .then((payload) => {
-        console.log("📩 INCOMING TRANSMISSION:", payload);
-        triggerAlert(payload.notification.title, payload.notification.body);
+        const title = payload.data?.title || payload.notification?.title;
+        const body = payload.data?.body || payload.notification?.body;
+        console.log("📩 INCOMING:", title);
+        triggerAlert(title, body);
       })
       .catch((err) => console.log("Firebase listener error: ", err));
 
     // --- NETWORK STATUS LISTENERS ---
-    const handleOffline = () => {
-      toast.error("LINK SEVERED", {
-        description: "Operating in offline mode.",
-        icon: <WifiOff className="text-red-500" />,
-        className: "bg-[#1a1d2e] border-2 border-red-500 text-white",
-      });
-    };
-
-    const handleOnline = () => {
-      toast.success("LINK ESTABLISHED", {
-        description: "Neural sync complete.",
-        icon: <Wifi className="text-green-500" />,
-        className: "bg-[#1a1d2e] border-2 border-green-500 text-white",
-      });
-    };
+    const handleOffline = () => toast.error("Offline Mode");
+    const handleOnline = () => toast.success("Online Mode");
 
     window.addEventListener("offline", handleOffline);
     window.addEventListener("online", handleOnline);
