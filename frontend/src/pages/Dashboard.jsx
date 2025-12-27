@@ -49,7 +49,8 @@ import {
 } from "lucide-react";
 
 // --- IMPORT FIREBASE LOGIC ---
-import { requestForToken } from "../lib/firebase";
+import { getMessaging, getToken } from "firebase/messaging";
+import { messaging } from "../lib/firebase";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -66,13 +67,77 @@ export default function Dashboard({ user, setUser }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   // Updated state for day selection
+  const [trackingHabit, setTrackingHabit] = useState(null); // The habit being updated
+  const [progressValue, setProgressValue] = useState(0);
+  const submitProgressReport = async () => {
+    try {
+      const val = parseFloat(progressValue);
+
+      await axios.patch(
+        `${API}/habits/${trackingHabit.id}`,
+        {
+          current_value: val,
+        },
+        getAuthHeader()
+      );
+
+      setHabits((prev) =>
+        prev.map((h) =>
+          h.id === trackingHabit.id ? { ...h, current_value: val } : h
+        )
+      );
+
+      toast.success("REPORT GENERATED", {
+        description: `Current Status: ${(
+          (val / trackingHabit.target_value) *
+          100
+        ).toFixed(1)}% complete.`,
+        icon: <Zap className="text-yellow-400 animate-pulse" />,
+      });
+
+      setTrackingHabit(null);
+      fetchData();
+    } catch (error) {
+      toast.error("SYNC FAILED", {
+        description: "Could not upload progress to the Python server.",
+      });
+    }
+  };
+
   const [showDayPicker, setShowDayPicker] = useState(false);
   const [habitForm, setHabitForm] = useState({
     name: "",
     description: "",
     frequency: "daily",
     notification_time: "",
+    is_measurable: false,
+    target_value: "",
+    starting_point: 0,
+    unit: "",
   });
+
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingHabit, setEditingHabit] = useState(null);
+  const handleSaveEdit = async () => {
+    try {
+      await axios.patch(
+        `${API}/habits/${editingHabit.id}`,
+        {
+          name: editingHabit.name,
+          notification_time: editingHabit.notification_time,
+          frequency: editingHabit.frequency,
+        },
+        getAuthHeader()
+      );
+
+      toast.success("CONFIGURATION UPDATED");
+      setIsEditDialogOpen(false);
+      setEditingHabit(null);
+      fetchData(); // Refresh the list to show new name/time
+    } catch (error) {
+      toast.error("Update Failed");
+    }
+  };
 
   const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -92,59 +157,60 @@ export default function Dashboard({ user, setUser }) {
 
   const navigate = useNavigate();
 
+  // --- HELPER: TOGGLE DAYS FOR EDITING ---
+  const toggleEditDay = (day) => {
+    if (!editingHabit) return;
+    let currentFreq = editingHabit.frequency || "daily";
+    let currentDays =
+      currentFreq === "daily"
+        ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        : currentFreq.split(",");
+
+    if (currentDays.includes(day)) {
+      currentDays = currentDays.filter((d) => d !== day);
+    } else {
+      currentDays.push(day);
+    }
+
+    const newFreq =
+      currentDays.length === 7 || currentDays.length === 0
+        ? "daily"
+        : currentDays.join(",");
+
+    setEditingHabit({ ...editingHabit, frequency: newFreq });
+  };
+
   // --- NEURAL LINK: CONNECTS BROWSER TO PYTHON SERVER ---
   const handleEnableAlerts = async () => {
-    if (!("Notification" in window)) {
-      toast.error("HARDWARE ERROR", {
-        description: "This browser does not support neural links.",
-      });
+    if (user?.fcm_token) {
+      try {
+        await axios.delete(`${API}/auth/fcm-token`, getAuthHeader());
+        setUser({ ...user, fcm_token: null });
+        toast.success("Neural Link Deactivated");
+      } catch (e) {
+        console.error(e);
+        toast.error("Disconnect Failed");
+      }
       return;
     }
 
     try {
       const permission = await Notification.requestPermission();
-
       if (permission === "granted") {
-        const testAudio = new Audio(
-          "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
-        );
-        testAudio.volume = 0.5;
-        testAudio
-          .play()
-          .catch((e) => console.warn("Audio start suppressed:", e));
-
-        toast.info("ESTABLISHING LINK...", { duration: 2000 });
-
-        const currentToken = await requestForToken();
-
-        if (currentToken) {
-          await axios.post(
-            `${API}/auth/fcm-token`,
-            { token: currentToken },
-            getAuthHeader()
-          );
-
-          toast.success("SYSTEM ONLINE", {
-            description:
-              "Background protocols active. You may now close this tab.",
-            className: "bg-[#1a1d2e] border-2 border-cyan-500 text-white",
-            icon: <Zap className="text-cyan-400 animate-pulse" />,
-          });
-        } else {
-          toast.error("SIGNAL LOST", {
-            description: "Could not generate device token.",
-          });
-        }
-      } else {
-        toast.error("ACCESS DENIED", {
-          description: "Please enable notifications in your browser settings.",
+        const token = await getToken(messaging, {
+          vapidKey:
+            "BDNIleLzdXrxJvBcpAHINCpv7mX1YmZwXmp6ChG_q_Sdt-PklKBwicPX_AQHH7oZjWt1kF1nYiWT-H-koo5GABo",
         });
+
+        if (token) {
+          await axios.post(`${API}/auth/fcm-token`, { token }, getAuthHeader());
+          setUser({ ...user, fcm_token: token });
+          toast.success("Neural Link Established");
+        }
       }
     } catch (error) {
-      console.error("Link Error:", error);
-      toast.error("CONNECTION REFUSED", {
-        description: "Server handshake failed.",
-      });
+      console.error(error);
+      toast.error("Connection Failed");
     }
   };
 
@@ -155,23 +221,20 @@ export default function Dashboard({ user, setUser }) {
         {},
         getAuthHeader()
       );
-
-      // Update local user state with new XP and Shield count
       setUser({
         ...user,
         xp: res.data.new_xp,
         shields: res.data.shields,
-        level: Math.floor(res.data.new_xp / 100) + 1, // Recalculate level locally
+        level: Math.floor(res.data.new_xp / 100) + 1,
       });
-
-      toast.success("SHIELD SECURED", {
-        description: "Your streak is now protected from one missed day.",
-        icon: <ShieldCheck className="text-green-400" />,
-      });
+      setStats((prev) => ({
+        ...prev,
+        xp: res.data.new_xp,
+        shields: res.data.shields,
+      }));
+      toast.success("SHIELD SECURED");
     } catch (error) {
-      toast.error("PURCHASE FAILED", {
-        description: error.response?.data?.detail || "Insufficient XP.",
-      });
+      toast.error("Insufficient XP");
     }
   };
 
@@ -346,19 +409,49 @@ export default function Dashboard({ user, setUser }) {
 
   const handleCreateHabit = async (e) => {
     e.preventDefault();
+
+    if (habitForm.is_measurable) {
+      if (!habitForm.target_value || Number(habitForm.target_value) <= 0) {
+        toast.error("INVALID TARGET", {
+          description: "Target goal must be greater than 0.",
+        });
+        return;
+      }
+    }
+
+    const payload = {
+      ...habitForm,
+      target_value: habitForm.is_measurable
+        ? Number(habitForm.target_value)
+        : 0,
+      starting_point: habitForm.is_measurable
+        ? Number(habitForm.starting_point)
+        : 0,
+      current_value: habitForm.is_measurable
+        ? Number(habitForm.starting_point)
+        : 0,
+      unit: habitForm.is_measurable ? habitForm.unit : "",
+      frequency: habitForm.frequency || "daily",
+    };
+
     try {
-      await axios.post(`${API}/habits`, habitForm, getAuthHeader());
+      await axios.post(`${API}/habits`, payload, getAuthHeader());
       toast.success("New Mission Logged!");
+
       setHabitForm({
         name: "",
         description: "",
         frequency: "daily",
         notification_time: "",
+        is_measurable: false,
+        target_value: "",
+        starting_point: 0,
+        unit: "",
       });
-      setShowDayPicker(false);
       setCreateDialogOpen(false);
       fetchData();
     } catch (error) {
+      console.error(error);
       toast.error("System Override Failed");
     }
   };
@@ -481,24 +574,44 @@ export default function Dashboard({ user, setUser }) {
           </button>
 
           {/* Shield Shop Button */}
-          <button
-            onClick={() => {
-              handleBuyShield();
-            }}
-            className="flex items-center gap-4 p-4 rounded-2xl bg-green-500/10 border border-green-500/30 text-green-400 hover:bg-green-500/20 transition-all hover:scale-[1.02] group"
+          <Button
+            onClick={handleBuyShield}
+            className="w-full bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-cyan-500/50 transition-all group p-4 h-auto"
           >
-            <div className="p-3 bg-green-500/20 rounded-xl group-hover:bg-green-500/30">
-              <ShieldCheck className="w-6 h-6" />
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
+                <div className="bg-cyan-500/10 p-2 rounded-lg group-hover:bg-cyan-500/20 transition-colors">
+                  <ShieldCheck className="w-5 h-5 text-cyan-400 group-hover:scale-110 transition-transform" />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-bold text-white uppercase tracking-wider">
+                    Streak Shield
+                  </p>
+                  <p className="text-[12px] text-green-500 font-mono">
+                    OWNED:{" "}
+                    <span className="text-cyan-400 font-bold text-xs">
+                      {stats?.shields || 0}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-black text-yellow-400">200 XP</p>
+                <p className="text-[10px] text-yellow-500 uppercase tracking-widest">
+                  Purchase
+                </p>
+              </div>
             </div>
-            <div className="text-left">
-              <span className="block font-black uppercase tracking-widest text-xs">
-                Shield Shop
+          </Button>
+          {/* --- SIMPLE SHIELD COUNTER --- */}
+          <div className="px-6 pb-2">
+            <p className="text-xs font-mono text-cyan-500/100 uppercase tracking-widest">
+              Shields Used:{" "}
+              <span className="text-white font-bold">
+                {stats?.shields || 0}
               </span>
-              <span className="block text-[10px] opacity-60 font-mono text-white">
-                {user.shields || 0} Owned // 200 XP
-              </span>
-            </div>
-          </button>
+            </p>
+          </div>
 
           <div className="mt-auto pt-8 border-t border-white/5 text-center">
             <p className="text-[10px] text-gray-600 font-mono">
@@ -513,7 +626,7 @@ export default function Dashboard({ user, setUser }) {
         <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-6">
           <div className="relative z-30 flex flex-col md:flex-row justify-between items-center gap-6 mb-6">
             <div className="text-center md:text-left">
-              <h1 className="text-5xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent uppercase tracking-tight">
+              <h1 className="text-6xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent uppercase tracking-tight">
                 HABIT TRACKER
               </h1>
 
@@ -544,26 +657,43 @@ export default function Dashboard({ user, setUser }) {
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-3">
-                    <p className="text-white font-mono text-base font-black tracking-[0.2em] uppercase drop-shadow-[0_0_8px_rgba(34,211,238,0.4)]">
-                      {user?.username || user?.email.split("@")[0]}{" "}
-                      <span className="text-cyan-500">//</span>{" "}
-                      {user?.title || "OPERATIVE"}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setTempName(
-                          user?.username || user?.email.split("@")[0]
-                        );
-                        setIsEditingName(true);
-                      }}
-                      className="relative z-50 text-cyan-400 hover:text-cyan-200 transition-all hover:scale-125 cursor-pointer p-2"
-                    >
-                      <Edit3 size={18} className="pointer-events-none" />
-                    </button>
+                  <div className="flex items-center gap-5 scale-110 origin-left">
+                    {" "}
+                    {/* Scaled up the whole group */}
+                    <div className="flex flex-col">
+                      {/* Username Line */}
+                      <span className="text-gray-500 text-[10px] font-mono tracking-[0.4em] uppercase mb-1">
+                        Authenticated Operative
+                      </span>
+
+                      <div className="flex items-center gap-4">
+                        <p className="burning-title-3d text-2xl font-black">
+                          {user?.username || user?.email.split("@")[0]}
+                          <span className="text-cyan-500 mx-2 opacity-50 font-light">
+                            //
+                          </span>
+                          <span className="bg-gradient-to-r from-white via-cyan-200 to-blue-400 bg-clip-text text-transparent">
+                            {user?.title || "NEON PHANTOM"}
+                          </span>
+                        </p>
+
+                        {/* Edit Button with enhanced glow */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setTempName(
+                              user?.username || user?.email.split("@")[0]
+                            );
+                            setIsEditingName(true);
+                          }}
+                          className="relative z-50 text-cyan-400 hover:text-white transition-all hover:scale-150 cursor-pointer p-2 drop-shadow-[0_0_10px_#22d3ee]"
+                        >
+                          <Edit3 size={15} className="pointer-events-none" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -582,16 +712,22 @@ export default function Dashboard({ user, setUser }) {
               </span>
             </button>
 
-            <button
-              onClick={handleEnableAlerts}
-              className={`flex items-center justify-center p-2 rounded-xl border transition-all ${
-                Notification.permission === "granted"
-                  ? "bg-green-500/10 text-green-400 border-green-500/30"
-                  : "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
+            <Button
+              variant="ghost"
+              className={`w-auto justify-start transition-all ${
+                user?.fcm_token
+                  ? "text-green-400 bg-green-900/20 hover:bg-green-900/30"
+                  : "text-gray-400 hover:text-cyan-400 hover:bg-cyan-950/30"
               }`}
+              onClick={handleEnableAlerts}
             >
-              <Bell className="w-5 h-5" />
-            </button>
+              <Zap
+                className={`mr-2 h-4 w-4 ${
+                  user?.fcm_token ? "fill-current" : ""
+                }`}
+              />
+              {user?.fcm_token ? "Link Active" : "Neural Link"}
+            </Button>
 
             <Button
               onClick={handleLogout}
@@ -639,7 +775,7 @@ export default function Dashboard({ user, setUser }) {
               </div>
               <div className="h-1.5 bg-black/40 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-purple-500 shadow-[0_0_10px_#a855f7]"
+                  className="h-full bg-purple-600 shadow-[0_0_10px_#a855f7]"
                   style={{ width: `${stats.xp % 100}%` }}
                 ></div>
               </div>
@@ -837,7 +973,79 @@ export default function Dashboard({ user, setUser }) {
                       }
                     />
                   </div>
+                  <div className="p-4 bg-cyan-500/5 rounded-2xl border border-cyan-500/20 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-mono text-cyan-400 tracking-[0.3em] uppercase">
+                        Enable Progress Tracking?
+                      </label>
+                      <input
+                        type="checkbox"
+                        className="w-5 h-5 accent-cyan-500 rounded border-gray-700 bg-gray-900"
+                        checked={habitForm.is_measurable}
+                        onChange={(e) =>
+                          setHabitForm({
+                            ...habitForm,
+                            is_measurable: e.target.checked,
+                          })
+                        }
+                      />
+                    </div>
 
+                    {habitForm.is_measurable && (
+                      <div className="grid grid-cols-3 gap-3 animate-in fade-in slide-in-from-top-2">
+                        <div className="space-y-1">
+                          <span className="text-[8px] uppercase text-gray-500">
+                            Start
+                          </span>
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            value={habitForm.starting_point}
+                            onChange={(e) =>
+                              setHabitForm({
+                                ...habitForm,
+                                starting_point: e.target.value,
+                              })
+                            }
+                            className="bg-[#0a0e27] border-gray-800 text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[8px] uppercase text-gray-500">
+                            Target
+                          </span>
+                          <Input
+                            type="number"
+                            placeholder="target"
+                            value={habitForm.target_value}
+                            onChange={(e) =>
+                              setHabitForm({
+                                ...habitForm,
+                                target_value: e.target.value,
+                              })
+                            }
+                            className="bg-[#0a0e27] border-gray-800 text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[8px] uppercase text-gray-500">
+                            Unit
+                          </span>
+                          <Input
+                            placeholder="UNITS"
+                            value={habitForm.unit}
+                            onChange={(e) =>
+                              setHabitForm({
+                                ...habitForm,
+                                unit: e.target.value,
+                              })
+                            }
+                            className="bg-[#0a0e27] border-gray-800 text-xs uppercase"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <Button
                     type="submit"
                     className="w-full bg-cyan-600 shadow-[0_0_15px_rgba(6,182,212,0.4)]"
@@ -849,84 +1057,115 @@ export default function Dashboard({ user, setUser }) {
             </Dialog>
           </div>
 
-          <div className="space-y-6">
-            {habits.map((habit) => (
-              <div
-                key={habit.id}
-                className="p-5 bg-[#0a0e27]/60 backdrop-blur-md rounded-2xl flex justify-between items-center border border-gray-800 hover:border-cyan-500/40 transition group"
-              >
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-white group-hover:text-cyan-400 transition uppercase italic">
-                    {habit.name}
-                  </h3>
-                  <div className="flex items-center gap-2 mt-1">
+          <div className="space-y-4">
+            {habits.map((habit) => {
+              // Robust checks
+              const isDone = Array.from(completedToday).some(
+                (id) => String(id) === String(habit.id)
+              );
+              const isMeasurable = Boolean(habit.is_measurable);
+
+              return (
+                <div
+                  key={habit.id}
+                  className="p-4 bg-[#0a0e27]/50 rounded-xl border border-gray-800 flex justify-between items-center group transition-all hover:border-cyan-500/30"
+                >
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-white">
+                      {habit.name}
+                    </h3>
                     {habit.notification_time && (
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <Bell className="w-3 h-3 text-cyan-500/40" />
-                        <span className="text-sm text-cyan-500/60 font-mono italic tracking-tight">
-                          {habit.notification_time.slice(0, 5)}
-                        </span>
-                        <span className="text-gray-800/40 mx-1">|</span>
-                        <span className="text-[10px] text-gray-500 uppercase font-bold tracking-tighter">
-                          {habit.frequency === "daily"
-                            ? "Daily"
-                            : habit.frequency}
-                        </span>
+                      <div className="flex items-center gap-1 text-xs text-cyan-200/80 font-mono mt-1 mb-1">
+                        <Bell className="w-3 h-3" />
+                        <span>{habit.notification_time}</span>
                       </div>
                     )}
+
+                    {/* 1. EDITABLE DESCRIPTION (Visible for ALL habits) */}
+                    <div className="flex items-center gap-2 mt-1">
+                      <input
+                        defaultValue={habit.description}
+                        className="bg-transparent text-sm text-gray-500 outline-none border-b border-transparent focus:border-cyan-500 w-full max-w-xs transition-colors"
+                        onBlur={(e) =>
+                          handleUpdateDescription(habit.id, e.target.value)
+                        }
+                      />
+                      <Edit3 className="w-3 h-3 text-gray-600 opacity-0 group-hover:opacity-100" />
+                    </div>
+
+                    {/* 2. TEXT STATUS (Only for measurable habits) */}
+                    {isMeasurable && (
+                      <p className="text-[10px] text-cyan-500 font-mono mt-1 font-bold tracking-wider">
+                        PROGRESS: {habit.current_value || 0} /{" "}
+                        {habit.target_value} {habit.unit}
+                      </p>
+                    )}
                   </div>
-                  <div className="mt-1 flex items-center gap-2">
-                    <input
-                      type="text"
-                      defaultValue={habit.description}
-                      className="bg-transparent text-sm text-gray-500 font-mono italic outline-none border-b border-transparent focus:border-cyan-500/30 w-full max-w-xs"
-                      onBlur={(e) =>
-                        e.target.value !== habit.description &&
-                        handleUpdateDescription(habit.id, e.target.value)
+
+                  <div className="flex items-center gap-2">
+                    {/* CHECK BUTTON */}
+                    <Button
+                      onClick={() => handleCompleteHabit(habit.id)}
+                      disabled={isDone}
+                      className={
+                        isDone
+                          ? "bg-gray-700 opacity-50 cursor-not-allowed"
+                          : "bg-green-600 hover:bg-green-500 shadow-lg shadow-green-900/20"
                       }
-                      onKeyDown={(e) => e.key === "Enter" && e.target.blur()}
-                    />
-                    <Edit3 className="w-3 h-3 text-gray-700 opacity-0 group-hover:opacity-100" />
+                    >
+                      <Check className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setEditingHabit(habit);
+                        setIsEditDialogOpen(true);
+                      }}
+                      className="bg-cyan-900/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/20 hover:text-white transition-all"
+                    >
+                      <Edit3 size={18} />
+                    </Button>
+
+                    {/* LOG BUTTON (Shows only if Done + Measurable) */}
+                    {isDone && isMeasurable && (
+                      <Button
+                        onClick={() => {
+                          setTrackingHabit(habit);
+                          setProgressValue(habit.current_value || 0);
+                        }}
+                        className="bg-purple-600 hover:bg-purple-500 text-xs px-3 shadow-[0_0_15px_rgba(168,85,247,0.4)] animate-in zoom-in duration-300"
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Log
+                      </Button>
+                    )}
+
+                    {/* DELETE BUTTON */}
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button className="bg-red-900/20 text-red-500 hover:bg-red-600 hover:text-white transition-colors border border-red-900/30">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent className="bg-[#1a1d2e] border-gray-700 text-white">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Habit?</AlertDialogTitle>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel className="bg-gray-700 text-white border-none hover:bg-gray-600">
+                            No
+                          </AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDeleteHabit(habit.id)}
+                            className="bg-red-600 hover:bg-red-500"
+                          >
+                            Yes
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={() => handleCompleteHabit(habit.id)}
-                    disabled={completedToday.has(habit.id)}
-                    className={
-                      completedToday.has(habit.id)
-                        ? "bg-gray-700 opacity-50"
-                        : "bg-gradient-to-r from-green-500 to-emerald-600 shadow-lg"
-                    }
-                  >
-                    <Check className="w-5 h-5" />
-                  </Button>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button className="bg-red-600/10 text-red-500 border border-red-500/20">
-                        <Trash2 className="w-5 h-5" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent className="bg-[#1a1d2e] border-gray-700 text-white">
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Cancel Habit?</AlertDialogTitle>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel className="bg-gray-700 text-white">
-                          Go Back
-                        </AlertDialogCancel>
-                        <AlertDialogAction
-                          onClick={() => handleDeleteHabit(habit.id)}
-                          className="bg-red-600"
-                        >
-                          Remove
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -1221,6 +1460,182 @@ export default function Dashboard({ user, setUser }) {
           </div>
         </div>
       </div>
+      <Dialog
+        open={!!trackingHabit}
+        onOpenChange={() => setTrackingHabit(null)}
+      >
+        <DialogContent className="bg-[#0a0e27]/95 border border-cyan-500/30 text-white backdrop-blur-2xl max-w-sm shadow-[0_0_50px_rgba(6,182,212,0.15)]">
+          <DialogHeader className="text-center pb-2 border-b border-white/5">
+            <DialogTitle className="text-xl font-black italic uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-white to-cyan-400">
+              Sync Mission Data
+            </DialogTitle>
+            <p className="text-[15px] text-cyan-500/70 font-mono tracking-[0.2em] uppercase mt-1">
+              Target: {trackingHabit?.name}
+            </p>
+          </DialogHeader>
+
+          <div className="flex flex-col items-center justify-center py-4 space-y-5">
+            <div className="relative w-48 h-48 group">
+              <div className="absolute inset-0 bg-cyan-500/10 rounded-full blur-2xl animate-pulse" />
+              <svg className="w-full h-full transform -rotate-90 relative z-10">
+                <circle
+                  cx="96"
+                  cy="96"
+                  r="80"
+                  stroke="currentColor"
+                  strokeWidth="10"
+                  fill="transparent"
+                  className="text-gray-800"
+                />
+                <circle
+                  cx="96"
+                  cy="96"
+                  r="80"
+                  stroke="currentColor"
+                  strokeWidth="10"
+                  fill="transparent"
+                  strokeDasharray={2 * Math.PI * 80}
+                  strokeDashoffset={
+                    2 * Math.PI * 80 -
+                    ((progressValue - (trackingHabit?.starting_point || 0)) /
+                      ((trackingHabit?.target_value || 1) -
+                        (trackingHabit?.starting_point || 0))) *
+                      (2 * Math.PI * 80)
+                  }
+                  strokeLinecap="round"
+                  className="text-cyan-400 transition-all duration-1000 ease-out drop-shadow-[0_0_10px_rgba(34,211,238,0.8)]"
+                />
+              </svg>
+
+              <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
+                <span className="text-5xl font-black text-white tracking-tighter drop-shadow-2xl">
+                  {progressValue}
+                </span>
+                <span className="text-[10px] font-mono text-cyan-400 uppercase tracking-widest bg-cyan-900/30 px-2 py-0.5 rounded-full border border-cyan-500/30 mt-1">
+                  {trackingHabit?.unit || "UNITS"}
+                </span>
+              </div>
+            </div>
+
+            <div className="w-full space-y-4 px-2">
+              <div className="relative w-full h-6 flex items-center">
+                <input
+                  type="range"
+                  min={trackingHabit?.starting_point || 0}
+                  max={trackingHabit?.target_value || 100}
+                  value={progressValue}
+                  onChange={(e) => setProgressValue(e.target.value)}
+                  className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-cyan-400 z-20 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                />
+                <div className="absolute top-1/2 left-0 w-full h-[1px] bg-gray-700 -z-10 flex justify-between px-1">
+                  {[...Array(11)].map((_, i) => (
+                    <div key={i} className="w-[1px] h-1.5 bg-gray-600" />
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-between w-full text-[12px] text-gray-400 font-mono uppercase tracking-widest font-bold">
+                <span>Start: {trackingHabit?.starting_point}</span>
+                <span className="text-cyan-400">
+                  {Math.min(
+                    100,
+                    ((progressValue - trackingHabit?.starting_point) /
+                      (trackingHabit?.target_value -
+                        trackingHabit?.starting_point)) *
+                      100
+                  ).toFixed(0)}
+                  %
+                </span>
+                <span>Goal: {trackingHabit?.target_value}</span>
+              </div>
+
+              <Button
+                onClick={submitProgressReport}
+                className="w-full h-12 text-sm bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white font-black uppercase tracking-[0.15em] shadow-[0_0_20px_rgba(8,145,178,0.3)] border border-cyan-400/30 transition-all hover:scale-[1.01]"
+              >
+                Confirm Update
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="bg-[#1a1d2e] border border-gray-700 text-white max-w-sm shadow-2xl">
+          <DialogHeader className="pb-2 border-b border-gray-800">
+            <DialogTitle className="text-xl font-bold text-white tracking-tight">
+              Edit Habit Details
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-5 pt-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide ml-1">
+                Habit Name
+              </label>
+              <Input
+                value={editingHabit?.name || ""}
+                onChange={(e) =>
+                  setEditingHabit({ ...editingHabit, name: e.target.value })
+                }
+                className="bg-black/40 border-gray-700 text-white font-medium focus:border-cyan-500 h-10"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide ml-1">
+                Frequency
+              </label>
+              <div className="flex justify-between gap-1 bg-black/40 p-1.5 rounded-lg border border-gray-700">
+                {weekDays.map((day) => {
+                  const isActive =
+                    editingHabit?.frequency === "daily" ||
+                    (editingHabit?.frequency || "").includes(day);
+
+                  return (
+                    <button
+                      key={day}
+                      onClick={() => toggleEditDay(day)}
+                      className={`w-8 h-8 rounded-md text-[10px] font-bold transition-all ${
+                        isActive
+                          ? "bg-cyan-600 text-white shadow-lg shadow-cyan-900/50"
+                          : "text-gray-500 hover:bg-white/5"
+                      }`}
+                    >
+                      {day.charAt(0)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide ml-1">
+                Reminder Time
+              </label>
+              <Input
+                type="time"
+                value={editingHabit?.notification_time || ""}
+                onChange={(e) =>
+                  setEditingHabit({
+                    ...editingHabit,
+                    notification_time: e.target.value,
+                  })
+                }
+                className="bg-black/40 border-gray-700 text-white h-10"
+              />
+            </div>
+
+            <div className="pt-2">
+              <Button
+                onClick={handleSaveEdit}
+                className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 shadow-lg shadow-cyan-900/20 transition-all"
+              >
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <footer className="relative z-20 mt-auto bg-[#050816] border-t-2 border-cyan-500/50 py-12 px-8">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">

@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
+
 const firebaseConfig = {
   apiKey: "AIzaSyArdSTx2lUqH3R3upaRdOlxAsRv7SVWVNw",
   authDomain: "habit-tracker-ab447.firebaseapp.com",
@@ -11,7 +12,7 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const messaging = getMessaging(app);
+export const messaging = getMessaging(app);
 
 export const requestForToken = async () => {
   try {

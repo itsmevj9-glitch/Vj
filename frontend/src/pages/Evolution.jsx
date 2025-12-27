@@ -249,7 +249,7 @@ export default function Evolution({ user }) {
           ${
             shields > 0
               ? "bg-emerald-500 border-emerald-400 text-white shadow-emerald-200/50 shadow-xl"
-              : "bg-red-600 border-red-500 text-white animate-pulse shadow-red-200/50 shadow-xl"
+              : "bg-red-600 border-red-500 text-white  shadow-red-200/50 shadow-xl"
           }`}
         >
           <ShieldCheck className="w-8 h-8 mb-2" />

@@ -115,16 +115,20 @@ def calculate_level(xp: int) -> int:
 
 
 def get_user_title(level: int) -> str:
-    """Returns a custom title based on the user's level."""
+    """Returns a burning 3D title for levels 1-30+"""
     if level < 5:
-        return "NEOPHYTE"
+        return "NEON PHANTOM"  # Beginner
     if level < 10:
-        return "INITIATE"
+        return "COBALT STRIKER"  # Progressing
+    if level < 15:
+        return "CYBER VANGUARD"  # Intermediate
     if level < 20:
-        return "SPECIALIST"
-    if level < 40:
-        return "COMMANDER"
-    return "LEGENDARY OVERLORD"
+        return "PLASMA EXECUTOR"  # Advanced
+    if level < 25:
+        return "TITAN ARCHITECT"  # Elite
+    if level < 30:
+        return "VOID OVERLORD"  # Master
+    return "SOLAR DEITY"  # Level 30+ (Max Rank)
 
 
 def get_badges(xp: int) -> List[str]:
@@ -141,6 +145,47 @@ def get_badges(xp: int) -> List[str]:
     if xp >= 5000:
         badges.append("Master")
     return badges
+
+
+async def apply_shield_protection(user_id: str):
+    user = await db.users.find_one({"id": user_id})
+    if not user or user.get("shields", 0) <= 0:
+        return
+
+    last_completion = await db.habit_completions.find_one(
+        {"user_id": user_id}, sort=[("completed_at", -1)]
+    )
+
+    if not last_completion:
+        return
+
+    now = datetime.now(timezone.utc)
+    today = now.date()
+
+    if isinstance(last_completion["completed_at"], str):
+        last_date = datetime.fromisoformat(last_completion["completed_at"]).date()
+    else:
+        last_date = last_completion["completed_at"].date()
+
+    delta = (today - last_date).days
+
+    if delta == 2:
+        await db.users.update_one({"id": user_id}, {"$inc": {"shields": -1}})
+
+        yesterday_iso = (now - timedelta(days=1)).isoformat()
+
+        await db.habit_completions.insert_one(
+            {
+                "id": str(uuid.uuid4()),
+                "habit_id": "SHIELD_PROTECTION",
+                "user_id": user_id,
+                "completed_at": yesterday_iso,
+                "xp_earned": 0,
+                "type": "shield",
+            }
+        )
+
+        await log_event({**user, "id": user_id}, "SHIELD_USED_AUTOMATICALLY")
 
 
 async def update_streaks(user_id: str):
@@ -311,6 +356,10 @@ class HabitCreate(BaseModel):
     description: Optional[str] = None
     frequency: str = "daily"
     notification_time: Optional[str] = None
+    is_measurable: bool = False
+    target_value: float = 0
+    starting_point: float = 0
+    unit: str = ""
 
 
 class User(BaseModel):
@@ -336,11 +385,24 @@ class Habit(BaseModel):
     id: str
     user_id: str
     name: str
+    is_measurable: bool = False
+    starting_point: float = 0 
+    target_value: float = 0
+    current_value: float = 0 
+    unit: str = ""
     description: Optional[str] = None
     frequency: str
     notification_time: Optional[str] = None
     is_active: bool = True
     last_notified_date: Optional[str] = None
+
+
+class HabitUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    notification_time: Optional[str] = None 
+    frequency: Optional[str] = None
+    current_value: Optional[float] = None
 
 
 class StatsResponse(BaseModel):
@@ -417,18 +479,13 @@ async def register(data: UserRegister):
 @api_router.post("/auth/login")
 async def login(data: UserLogin):
     user = await db.users.find_one({"email": data.email})
-
     if not user or not verify_password(data.password, user["password_hash"]):
         raise HTTPException(401, "Invalid credentials")
 
-    # Update Last Active Timestamp
-    await db.users.update_one(
-        {"id": user["id"]},
-        {"$set": {"last_active": datetime.now(timezone.utc).isoformat()}},
-    )
-
     clean_user = {k: v for k, v in user.items() if k not in ["password_hash", "_id"]}
-    await log_event(clean_user, "LOGIN")
+
+    # Calculate the title before sending to the frontend
+    clean_user["title"] = get_user_title(user.get("level", 1))
 
     return {
         "token": create_access_token({"sub": user["id"]}),
@@ -441,6 +498,7 @@ async def me(user: dict = Depends(get_current_user)):
     """Fetches current user details with dynamic title calculation."""
     user["username"] = user.get("username", user["email"].split("@")[0])
     user["title"] = get_user_title(user.get("level", 1))
+
     user["shields"] = user.get("shields", 0)
     return user
 
@@ -487,6 +545,13 @@ async def save_fcm(data: dict, user: dict = Depends(get_current_user)):
     return {"message": "Token saved"}
 
 
+@api_router.delete("/auth/fcm-token")
+async def remove_fcm(user: dict = Depends(get_current_user)):
+    """Removes the FCM token so notifications stop."""
+    await db.users.update_one({"id": user["id"]}, {"$unset": {"fcm_token": ""}})
+    return {"message": "Notifications Disabled"}
+
+
 # --- EVOLUTION & SHOP ROUTES ---
 
 
@@ -526,25 +591,32 @@ async def buy_shield(user: dict = Depends(get_current_user)):
 
 @api_router.get("/stats", response_model=StatsResponse)
 async def get_stats(user: dict = Depends(get_current_user)):
-    """
-    Returns user stats for the dashboard.
-    Includes fallbacks for missing fields to prevent 500 errors.
-    """
     try:
+        # Check shield before calculating stats
+        if user.get("shields", 0) > 0:
+            await apply_shield_protection(user["id"])
+            user = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+
         today_start = datetime.now(timezone.utc).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
 
-        # Safely extract values
         user_xp = user.get("xp", 0)
         user_level = user.get("level", 1)
+
+        cur_streak, long_streak = await update_streaks(user["id"])
+
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {"current_streak": cur_streak, "longest_streak": long_streak}},
+        )
 
         return StatsResponse(
             xp=user_xp,
             level=user_level,
             total_points=user_xp,
-            current_streak=user.get("current_streak", 0),
-            longest_streak=user.get("longest_streak", 0),
+            current_streak=cur_streak,
+            longest_streak=long_streak,
             badges=user.get("badges", ["Beginner"]),
             shields=user.get("shields", 0),
             title=get_user_title(user_level),
@@ -652,6 +724,11 @@ async def create_habit(data: HabitCreate, user: dict = Depends(get_current_user)
         "description": data.description,
         "frequency": data.frequency,
         "notification_time": data.notification_time,
+        "is_measurable": data.is_measurable,
+        "target_value": data.target_value,
+        "starting_point": data.starting_point,
+        "current_value": data.starting_point,  # Start at the starting point
+        "unit": data.unit,
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -675,13 +752,16 @@ async def update_habit(
     return {k: v for k, v in res.items() if k != "_id"}
 
 
-@api_router.patch("/habits/{hid}", response_model=Habit)
-async def patch_habit(hid: str, data: dict, user: dict = Depends(get_current_user)):
-    await db.habits.update_one({"id": hid, "user_id": user["id"]}, {"$set": data})
-    h = await db.habits.find_one({"id": hid}, {"_id": 0})
-    if not h:
-        raise HTTPException(404, "Not found")
-    return h
+@api_router.patch("/habits/{hid}")
+async def patch_habit(
+    hid: str, update_data: HabitUpdate, user: dict = Depends(get_current_user)
+):
+    data = {k: v for k, v in update_data.dict().items() if v is not None}
+
+    if data:
+        await db.habits.update_one({"id": hid, "user_id": user["id"]}, {"$set": data})
+
+    return {"status": "success"}
 
 
 @api_router.delete("/habits/{hid}")

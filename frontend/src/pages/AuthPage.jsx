@@ -83,16 +83,16 @@ export default function AuthPage({ setUser }) {
               Habit Tracker
             </h1>
             <p className="text-gray-400 text-xs uppercase tracking-widest font-mono">
-              Neural Protocol // v2.5
+              Level Up Your Life, One Habit at a Time.
             </p>
           </div>
 
           <div className="flex gap-2 mb-8">
             <Button
               onClick={() => setIsLogin(true)}
-              className={`flex-1 rounded-xl py-3 font-bold transition-all text-[10px] tracking-widest uppercase ${
+              className={`flex-1 rounded-xl py-3 font-bold transition-all text-[12px] tracking-widest uppercase ${
                 isLogin
-                  ? "bg-cyan-500 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)]"
+                  ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)]"
                   : "bg-transparent border border-gray-800 text-gray-500"
               }`}
             >
@@ -100,9 +100,9 @@ export default function AuthPage({ setUser }) {
             </Button>
             <Button
               onClick={() => setIsLogin(false)}
-              className={`flex-1 rounded-xl py-3 font-bold transition-all text-[10px] tracking-widest uppercase ${
+              className={`flex-1 rounded-xl py-3 font-bold transition-all text-[12px] tracking-widest uppercase ${
                 !isLogin
-                  ? "bg-cyan-500 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)]"
+                  ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)]"
                   : "bg-transparent border border-gray-700 text-gray-400"
               }`}
             >
